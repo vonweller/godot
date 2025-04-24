@@ -51,6 +51,7 @@ public:
 		Color self_modulate;
 		bool use_parent_material;
 		int index;
+		int relative_index;
 		bool children_order_dirty;
 		int ysort_children_count;
 		Color ysort_modulate;
@@ -108,7 +109,12 @@ public:
 
 	struct ItemIndexSort {
 		_FORCE_INLINE_ bool operator()(const Item *p_left, const Item *p_right) const {
-			return p_left->index < p_right->index;
+			int combined_index = p_left->index + p_left->relative_index;
+			int p_combined_index = p_right->index + p_right->relative_index;
+			if (combined_index == p_combined_index) {
+				return p_left->relative_index < p_right->relative_index;
+			}
+			return combined_index < p_combined_index;
 		}
 	};
 
@@ -146,7 +152,12 @@ public:
 		struct ChildItem {
 			Item *item = nullptr;
 			bool operator<(const ChildItem &p_item) const {
-				return item->index < p_item.item->index;
+				int combined_index = item->index + item->relative_index;
+				int p_combined_index = p_item.item->index + p_item.item->relative_index;
+				if (combined_index == p_combined_index) {
+					return item->relative_index < p_item.item->relative_index;
+				}
+				return combined_index < p_combined_index;
 			}
 		};
 
@@ -283,6 +294,7 @@ public:
 
 	void canvas_item_clear(RID p_item);
 	void canvas_item_set_draw_index(RID p_item, int p_index);
+	void canvas_item_set_relative_index(RID p_item, int p_index);
 
 	void canvas_item_set_material(RID p_item, RID p_material);
 

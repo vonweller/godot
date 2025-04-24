@@ -1,0 +1,176 @@
+diff --git a/scene/main/canvas_item.cpp b/scene/main/canvas_item.cpp
+index 1aa2d964ed..674820b4d9 100644
+--- a/scene/main/canvas_item.cpp
++++ b/scene/main/canvas_item.cpp
+@@ -670,6 +670,18 @@ int CanvasItem::get_z_index() const {
+ 	return z_index;
+ }
+ 
++int CanvasItem::get_relative_index() const {
++	ERR_READ_THREAD_GUARD_V(0);
++	return relative_index;
++}
++
++void CanvasItem::set_relative_index(int p_index) {
++	ERR_THREAD_GUARD;
++	relative_index = p_index;
++	RS::get_singleton()->canvas_item_set_relative_index(canvas_item, relative_index);
++	update_configuration_warnings();
++}
++
+ int CanvasItem::get_effective_z_index() const {
+ 	ERR_READ_THREAD_GUARD_V(0);
+ 	int effective_z_index = z_index;
+@@ -1340,6 +1352,9 @@ void CanvasItem::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("set_z_index", "z_index"), &CanvasItem::set_z_index);
+ 	ClassDB::bind_method(D_METHOD("get_z_index"), &CanvasItem::get_z_index);
+ 
++	ClassDB::bind_method(D_METHOD("set_relative_index", "relative_index"), &CanvasItem::set_relative_index);
++	ClassDB::bind_method(D_METHOD("get_relative_index"), &CanvasItem::get_relative_index);
++
+ 	ClassDB::bind_method(D_METHOD("set_z_as_relative", "enable"), &CanvasItem::set_z_as_relative);
+ 	ClassDB::bind_method(D_METHOD("is_z_relative"), &CanvasItem::is_z_relative);
+ 
+@@ -1441,6 +1456,7 @@ void CanvasItem::_bind_methods() {
+ 
+ 	ADD_GROUP("Ordering", "");
+ 	ADD_PROPERTY(PropertyInfo(Variant::INT, "z_index", PROPERTY_HINT_RANGE, itos(RS::CANVAS_ITEM_Z_MIN) + "," + itos(RS::CANVAS_ITEM_Z_MAX) + ",1"), "set_z_index", "get_z_index");
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "relative_index", PROPERTY_HINT_RANGE, itos(RS::CANVAS_ITEM_Z_MIN) + "," + itos(RS::CANVAS_ITEM_Z_MAX) + ",1"), "set_relative_index", "get_relative_index");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "z_as_relative"), "set_z_as_relative", "is_z_relative");
+ 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "y_sort_enabled"), "set_y_sort_enabled", "is_y_sort_enabled");
+ 
+diff --git a/scene/main/canvas_item.h b/scene/main/canvas_item.h
+index 14e11a9768..ea45d9f12c 100644
+--- a/scene/main/canvas_item.h
++++ b/scene/main/canvas_item.h
+@@ -92,6 +92,7 @@ private:
+ 	int z_index = 0;
+ 	bool z_relative = true;
+ 	bool y_sort_enabled = false;
++	int relative_index = 0;
+ 
+ 	Window *window = nullptr;
+ 	bool visible = true;
+@@ -285,6 +286,8 @@ public:
+ 
+ 	virtual void set_z_index(int p_z);
+ 	int get_z_index() const;
++	void set_relative_index(int p_z);
++	int get_relative_index() const;
+ 	int get_effective_z_index() const;
+ 
+ 	void set_z_as_relative(bool p_enabled);
+diff --git a/servers/rendering/renderer_canvas_cull.cpp b/servers/rendering/renderer_canvas_cull.cpp
+index 03c347c321..45681c355b 100644
+--- a/servers/rendering/renderer_canvas_cull.cpp
++++ b/servers/rendering/renderer_canvas_cull.cpp
+@@ -1917,6 +1917,25 @@ void RendererCanvasCull::canvas_item_set_draw_index(RID p_item, int p_index) {
+ 	}
+ }
+ 
++void RendererCanvasCull::canvas_item_set_relative_index(RID p_item, int p_index) {
++	Item *canvas_item = canvas_item_owner.get_or_null(p_item);
++	ERR_FAIL_NULL(canvas_item);
++
++	canvas_item->relative_index = p_index;
++
++	if (canvas_item_owner.owns(canvas_item->parent)) {
++		Item *canvas_item_parent = canvas_item_owner.get_or_null(canvas_item->parent);
++		canvas_item_parent->children_order_dirty = true;
++		return;
++	}
++
++	Canvas *canvas = canvas_owner.get_or_null(canvas_item->parent);
++	if (canvas) {
++		canvas->children_order_dirty = true;
++		return;
++	}
++}
++
+ void RendererCanvasCull::canvas_item_set_material(RID p_item, RID p_material) {
+ 	Item *canvas_item = canvas_item_owner.get_or_null(p_item);
+ 	ERR_FAIL_NULL(canvas_item);
+diff --git a/servers/rendering/renderer_canvas_cull.h b/servers/rendering/renderer_canvas_cull.h
+index 1f01bbce11..0dd00c89e2 100644
+--- a/servers/rendering/renderer_canvas_cull.h
++++ b/servers/rendering/renderer_canvas_cull.h
+@@ -51,6 +51,7 @@ public:
+ 		Color self_modulate;
+ 		bool use_parent_material;
+ 		int index;
++		int relative_index;
+ 		bool children_order_dirty;
+ 		int ysort_children_count;
+ 		Color ysort_modulate;
+@@ -108,7 +109,12 @@ public:
+ 
+ 	struct ItemIndexSort {
+ 		_FORCE_INLINE_ bool operator()(const Item *p_left, const Item *p_right) const {
+-			return p_left->index < p_right->index;
++			int combined_index = p_left->index + p_left->relative_index;
++			int p_combined_index = p_right->index + p_right->relative_index;
++			if (combined_index == p_combined_index) {
++				return p_left->relative_index < p_right->relative_index;
++			}
++			return combined_index < p_combined_index;
+ 		}
+ 	};
+ 
+@@ -146,7 +152,12 @@ public:
+ 		struct ChildItem {
+ 			Item *item = nullptr;
+ 			bool operator<(const ChildItem &p_item) const {
+-				return item->index < p_item.item->index;
++				int combined_index = item->index + item->relative_index;
++				int p_combined_index = p_item.item->index + p_item.item->relative_index;
++				if (combined_index == p_combined_index) {
++					return item->relative_index < p_item.item->relative_index;
++				}
++				return combined_index < p_combined_index;
+ 			}
+ 		};
+ 
+@@ -283,6 +294,7 @@ public:
+ 
+ 	void canvas_item_clear(RID p_item);
+ 	void canvas_item_set_draw_index(RID p_item, int p_index);
++	void canvas_item_set_relative_index(RID p_item, int p_index);
+ 
+ 	void canvas_item_set_material(RID p_item, RID p_material);
+ 
+diff --git a/servers/rendering/rendering_server_default.h b/servers/rendering/rendering_server_default.h
+index 748cc3706f..86646e471f 100644
+--- a/servers/rendering/rendering_server_default.h
++++ b/servers/rendering/rendering_server_default.h
+@@ -992,6 +992,7 @@ public:
+ 
+ 	FUNC1(canvas_item_clear, RID)
+ 	FUNC2(canvas_item_set_draw_index, RID, int)
++	FUNC2(canvas_item_set_relative_index, RID, int)
+ 
+ 	FUNC2(canvas_item_set_material, RID, RID)
+ 
+diff --git a/servers/rendering_server.cpp b/servers/rendering_server.cpp
+index ef8cc6469b..4b5c70d0da 100644
+--- a/servers/rendering_server.cpp
++++ b/servers/rendering_server.cpp
+@@ -3307,6 +3307,7 @@ void RenderingServer::_bind_methods() {
+ 
+ 	ClassDB::bind_method(D_METHOD("canvas_item_clear", "item"), &RenderingServer::canvas_item_clear);
+ 	ClassDB::bind_method(D_METHOD("canvas_item_set_draw_index", "item", "index"), &RenderingServer::canvas_item_set_draw_index);
++	ClassDB::bind_method(D_METHOD("canvas_item_set_relative_index", "item", "index"), &RenderingServer::canvas_item_set_relative_index);
+ 	ClassDB::bind_method(D_METHOD("canvas_item_set_material", "item", "material"), &RenderingServer::canvas_item_set_material);
+ 	ClassDB::bind_method(D_METHOD("canvas_item_set_use_parent_material", "item", "enabled"), &RenderingServer::canvas_item_set_use_parent_material);
+ 
+diff --git a/servers/rendering_server.h b/servers/rendering_server.h
+index af8be9db32..fe7ca5bc7b 100644
+--- a/servers/rendering_server.h
++++ b/servers/rendering_server.h
+@@ -1582,6 +1582,7 @@ public:
+ 
+ 	virtual void canvas_item_clear(RID p_item) = 0;
+ 	virtual void canvas_item_set_draw_index(RID p_item, int p_index) = 0;
++	virtual void canvas_item_set_relative_index(RID p_item, int p_index) = 0;
+ 
+ 	virtual void canvas_item_set_material(RID p_item, RID p_material) = 0;
+ 
