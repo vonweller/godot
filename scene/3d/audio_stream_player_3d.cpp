@@ -83,13 +83,13 @@ public:
 		const Speaker *r = speakers.ptr();
 		real_t sum_squared_gains = 0.0;
 		for (unsigned int speaker_num = 0; speaker_num < (unsigned int)speakers.size(); speaker_num++) {
-			real_t initial_gain = 0.5 * powf(1.0 + r[speaker_num].direction.dot(source_direction), tightness) / r[speaker_num].effective_number_of_speakers;
+			real_t initial_gain = 0.5 * std::pow(1.0 + r[speaker_num].direction.dot(source_direction), tightness) / r[speaker_num].effective_number_of_speakers;
 			r[speaker_num].squared_gain = initial_gain * initial_gain;
 			sum_squared_gains += r[speaker_num].squared_gain;
 		}
 
 		for (unsigned int speaker_num = 0; speaker_num < MIN(volume_count, (unsigned int)speakers.size()); speaker_num++) {
-			volumes[speaker_num] = sqrtf(r[speaker_num].squared_gain / sum_squared_gains);
+			volumes[speaker_num] = std::sqrt(r[speaker_num].squared_gain / sum_squared_gains);
 		}
 	}
 };
@@ -920,7 +920,7 @@ AudioStreamPlayer3D::AudioStreamPlayer3D() {
 	internal = memnew(AudioStreamPlayerInternal(this, callable_mp(this, &AudioStreamPlayer3D::play), callable_mp(this, &AudioStreamPlayer3D::stop), true));
 	velocity_tracker.instantiate();
 	set_disable_scale(true);
-	cached_global_panning_strength = GLOBAL_GET("audio/general/3d_panning_strength");
+	cached_global_panning_strength = GLOBAL_GET_CACHED(float, "audio/general/3d_panning_strength");
 }
 
 AudioStreamPlayer3D::~AudioStreamPlayer3D() {
