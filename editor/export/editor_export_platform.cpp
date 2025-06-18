@@ -54,6 +54,8 @@
 #include "scene/resources/image_texture.h"
 #include "scene/resources/packed_scene.h"
 
+#include "core/crypto/custom_crypto.h" // <-- 添加这一行
+
 class EditorExportSaveProxy {
 	HashSet<String> saved_paths;
 	EditorExportPlatform::EditorExportSaveFunction save_func;

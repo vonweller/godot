@@ -35,6 +35,7 @@
 #include "core/io/file_access_encrypted.h"
 #include "core/io/file_access_pack.h" // PACK_HEADER_MAGIC, PACK_FORMAT_VERSION
 #include "core/version.h"
+#include "core/crypto/custom_crypto.h"
 
 static int _get_pad(int p_alignment, int p_n) {
 	int rest = p_n % p_alignment;
@@ -162,6 +163,7 @@ Error PCKPacker::add_file(const String &p_target_path, const String &p_source_pa
 	pf.size = f->get_length();
 
 	Vector<uint8_t> data = FileAccess::get_file_as_bytes(p_source_path);
+	// The MD5 must be calculated on the original data, so we do it before any encryption.
 	{
 		unsigned char hash[16];
 		CryptoCore::md5(data.ptr(), data.size(), hash);
@@ -170,6 +172,11 @@ Error PCKPacker::add_file(const String &p_target_path, const String &p_source_pa
 			pf.md5.write[i] = hash[i];
 		}
 	}
+
+	if (p_encrypt) {
+		CustomCrypto::xor_data(data); // Custom XOR encryption
+	}
+
 	pf.encrypted = p_encrypt;
 
 	Ref<FileAccess> ftmp = file;
@@ -184,10 +191,10 @@ Error PCKPacker::add_file(const String &p_target_path, const String &p_source_pa
 		ftmp = fae;
 	}
 
-	ftmp->store_buffer(data);
+	ftmp->store_buffer(data.ptr(), data.size());
 
 	if (fae.is_valid()) {
-		ftmp.unref();
+		// No need to unref ftmp, fae is the same RefCounted
 		fae.unref();
 	}
 

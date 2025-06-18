@@ -31,6 +31,12 @@
 #include "file_access_encrypted.h"
 
 #include "core/variant/variant.h"
+#include "core/crypto/crypto_core.h"
+#include "core/io/file_access.h"
+
+#include "core/crypto/custom_crypto.h"
+
+#define ENCRYPTED_HEADER_MAGIC 0x43454447
 
 CryptoCore::RandomGenerator *FileAccessEncrypted::_fae_static_rng = nullptr;
 
@@ -106,6 +112,8 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 		}
 
 		data.resize(length);
+
+		CustomCrypto::xor_data(data);
 
 		unsigned char hash[16];
 		ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
