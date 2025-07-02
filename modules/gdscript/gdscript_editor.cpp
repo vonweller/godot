@@ -297,7 +297,7 @@ int GDScriptLanguage::debug_get_stack_level_count() const {
 		return 1;
 	}
 
-	return _call_stack.stack_pos;
+	return _call_stack_size;
 }
 
 int GDScriptLanguage::debug_get_stack_level_line(int p_level) const {
@@ -305,11 +305,9 @@ int GDScriptLanguage::debug_get_stack_level_line(int p_level) const {
 		return _debug_parse_err_line;
 	}
 
-	ERR_FAIL_INDEX_V(p_level, _call_stack.stack_pos, -1);
+	ERR_FAIL_INDEX_V(p_level, (int)_call_stack_size, -1);
 
-	int l = _call_stack.stack_pos - p_level - 1;
-
-	return *(_call_stack.levels[l].line);
+	return *(_get_stack_level(p_level)->line);
 }
 
 String GDScriptLanguage::debug_get_stack_level_function(int p_level) const {
@@ -317,9 +315,9 @@ String GDScriptLanguage::debug_get_stack_level_function(int p_level) const {
 		return "";
 	}
 
-	ERR_FAIL_INDEX_V(p_level, _call_stack.stack_pos, "");
-	int l = _call_stack.stack_pos - p_level - 1;
-	return _call_stack.levels[l].function->get_name();
+	ERR_FAIL_INDEX_V(p_level, (int)_call_stack_size, "");
+	GDScriptFunction *func = _get_stack_level(p_level)->function;
+	return func ? func->get_name().operator String() : "";
 }
 
 String GDScriptLanguage::debug_get_stack_level_source(int p_level) const {
@@ -327,9 +325,8 @@ String GDScriptLanguage::debug_get_stack_level_source(int p_level) const {
 		return _debug_parse_err_file;
 	}
 
-	ERR_FAIL_INDEX_V(p_level, _call_stack.stack_pos, "");
-	int l = _call_stack.stack_pos - p_level - 1;
-	return _call_stack.levels[l].function->get_source();
+	ERR_FAIL_INDEX_V(p_level, (int)_call_stack_size, "");
+	return _get_stack_level(p_level)->function->get_source();
 }
 
 void GDScriptLanguage::debug_get_stack_level_locals(int p_level, List<String> *p_locals, List<Variant> *p_values, int p_max_subitems, int p_max_depth) {
@@ -337,17 +334,17 @@ void GDScriptLanguage::debug_get_stack_level_locals(int p_level, List<String> *p
 		return;
 	}
 
-	ERR_FAIL_INDEX(p_level, _call_stack.stack_pos);
-	int l = _call_stack.stack_pos - p_level - 1;
+	ERR_FAIL_INDEX(p_level, (int)_call_stack_size);
 
-	GDScriptFunction *f = _call_stack.levels[l].function;
+	CallLevel *cl = _get_stack_level(p_level);
+	GDScriptFunction *f = cl->function;
 
 	List<Pair<StringName, int>> locals;
 
-	f->debug_get_stack_member_state(*_call_stack.levels[l].line, &locals);
+	f->debug_get_stack_member_state(*cl->line, &locals);
 	for (const Pair<StringName, int> &E : locals) {
 		p_locals->push_back(E.first);
-		p_values->push_back(_call_stack.levels[l].stack[E.second]);
+		p_values->push_back(cl->stack[E.second]);
 	}
 }
 
@@ -356,10 +353,10 @@ void GDScriptLanguage::debug_get_stack_level_members(int p_level, List<String> *
 		return;
 	}
 
-	ERR_FAIL_INDEX(p_level, _call_stack.stack_pos);
-	int l = _call_stack.stack_pos - p_level - 1;
+	ERR_FAIL_INDEX(p_level, (int)_call_stack_size);
 
-	GDScriptInstance *instance = _call_stack.levels[l].instance;
+	CallLevel *cl = _get_stack_level(p_level);
+	GDScriptInstance *instance = cl->instance;
 
 	if (!instance) {
 		return;
@@ -381,12 +378,9 @@ ScriptInstance *GDScriptLanguage::debug_get_stack_level_instance(int p_level) {
 		return nullptr;
 	}
 
-	ERR_FAIL_INDEX_V(p_level, _call_stack.stack_pos, nullptr);
+	ERR_FAIL_INDEX_V(p_level, (int)_call_stack_size, nullptr);
 
-	int l = _call_stack.stack_pos - p_level - 1;
-	ScriptInstance *instance = _call_stack.levels[l].instance;
-
-	return instance;
+	return _get_stack_level(p_level)->instance;
 }
 
 void GDScriptLanguage::debug_get_globals(List<String> *p_globals, List<Variant> *p_values, int p_max_subitems, int p_max_depth) {
@@ -1649,6 +1643,8 @@ static GDScriptCompletionIdentifier _type_from_property(const PropertyInfo &p_pr
 
 	if (p_property.type == Variant::NIL) {
 		// Variant
+		ci.type.type_source = GDScriptParser::DataType::ANNOTATED_EXPLICIT;
+		ci.type.kind = GDScriptParser::DataType::VARIANT;
 		return ci;
 	}
 
@@ -2347,7 +2343,7 @@ static bool _guess_identifier_type(GDScriptParser::CompletionContext &p_context,
 		c.current_line = last_assign_line;
 		GDScriptCompletionIdentifier assigned_type;
 		if (_guess_expression_type(c, last_assigned_expression, assigned_type)) {
-			if (id_type.type.is_set() && assigned_type.type.is_set() && !GDScriptAnalyzer::check_type_compatibility(id_type.type, assigned_type.type)) {
+			if (id_type.type.is_set() && (assigned_type.type.kind == GDScriptParser::DataType::VARIANT || (assigned_type.type.is_set() && !GDScriptAnalyzer::check_type_compatibility(id_type.type, assigned_type.type)))) {
 				// The assigned type is incompatible. The annotated type takes priority.
 				r_type = id_type;
 				r_type.assigned_expression = last_assigned_expression;
@@ -3151,8 +3147,21 @@ static bool _get_subscript_type(GDScriptParser::CompletionContext &p_context, co
 					}
 				} break;
 				case GDScriptParser::IdentifierNode::Source::LOCAL_VARIABLE: {
-					if (identifier_node->next != nullptr && identifier_node->next->type == GDScriptParser::ClassNode::Node::GET_NODE) {
-						get_node = static_cast<GDScriptParser::GetNodeNode *>(identifier_node->next);
+					// TODO: Do basic assignment flow analysis like in `_guess_expression_type`.
+					const GDScriptParser::SuiteNode::Local local = identifier_node->suite->get_local(identifier_node->name);
+					switch (local.type) {
+						case GDScriptParser::SuiteNode::Local::CONSTANT: {
+							if (local.constant->initializer && local.constant->initializer->type == GDScriptParser::Node::GET_NODE) {
+								get_node = static_cast<GDScriptParser::GetNodeNode *>(local.constant->initializer);
+							}
+						} break;
+						case GDScriptParser::SuiteNode::Local::VARIABLE: {
+							if (local.variable->initializer && local.variable->initializer->type == GDScriptParser::Node::GET_NODE) {
+								get_node = static_cast<GDScriptParser::GetNodeNode *>(local.variable->initializer);
+							}
+						} break;
+						default: {
+						} break;
 					}
 				} break;
 				default: {
