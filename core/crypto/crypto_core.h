@@ -113,4 +113,19 @@ public:
 	static Error md5(const uint8_t *p_src, size_t p_src_len, unsigned char r_hash[16]);
 	static Error sha1(const uint8_t *p_src, size_t p_src_len, unsigned char r_hash[20]);
 	static Error sha256(const uint8_t *p_src, size_t p_src_len, unsigned char r_hash[32]);
+
+	// Enhanced cryptographic functions for PCK encryption
+	static Error pbkdf2_hmac_sha256(const uint8_t *p_password, size_t p_password_len,
+									const uint8_t *p_salt, size_t p_salt_len,
+									uint32_t p_iterations,
+									uint8_t *r_output, size_t p_output_len);
+
+	static Error hkdf_sha256(const uint8_t *p_salt, size_t p_salt_len,
+							const uint8_t *p_ikm, size_t p_ikm_len,
+							const uint8_t *p_info, size_t p_info_len,
+							uint8_t *r_okm, size_t p_okm_len);
+
+	static Error hmac_sha256(const uint8_t *p_key, size_t p_key_len,
+							const uint8_t *p_data, size_t p_data_len,
+							uint8_t r_hash[32]);
 };

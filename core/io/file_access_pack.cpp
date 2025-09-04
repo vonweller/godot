@@ -31,6 +31,8 @@
 #include "file_access_pack.h"
 
 #include "core/io/file_access_encrypted.h"
+#include "core/io/file_access_encrypted_enhanced.h"
+#include "core/io/pck_key_derivation.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/version.h"
@@ -45,7 +47,7 @@ Error PackedData::add_pack(const String &p_path, bool p_replace_files, uint64_t 
 	return ERR_FILE_UNRECOGNIZED;
 }
 
-void PackedData::add_path(const String &p_pkg_path, const String &p_path, uint64_t p_ofs, uint64_t p_size, const uint8_t *p_md5, PackSource *p_src, bool p_replace_files, bool p_encrypted, bool p_bundle) {
+void PackedData::add_path(const String &p_pkg_path, const String &p_path, uint64_t p_ofs, uint64_t p_size, const uint8_t *p_md5, PackSource *p_src, bool p_replace_files, bool p_encrypted, bool p_bundle, bool p_enhanced_encrypted) {
 	String simplified_path = p_path.simplify_path().trim_prefix("res://");
 	PathMD5 pmd5(simplified_path.md5_buffer());
 
@@ -53,6 +55,7 @@ void PackedData::add_path(const String &p_pkg_path, const String &p_path, uint64
 
 	PackedFile pf;
 	pf.encrypted = p_encrypted;
+	pf.enhanced_encrypted = p_enhanced_encrypted;
 	pf.bundle = p_bundle;
 	pf.pack = p_pkg_path;
 	pf.offset = p_ofs;
@@ -270,6 +273,13 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 	bool enc_directory = (pack_flags & PACK_DIR_ENCRYPTED);
 	bool rel_filebase = (pack_flags & PACK_REL_FILEBASE); // Note: Always enabled for V3.
 	bool sparse_bundle = (pack_flags & PACK_SPARSE_BUNDLE);
+	bool enhanced_encryption = (pack_flags & PACK_ENHANCED_ENCRYPTION);
+
+	// Read enhanced security parameters if present
+	PCKKeyDerivation::SecurityParameters security_params;
+	if (enhanced_encryption) {
+		f->get_buffer((uint8_t *)&security_params, sizeof(PCKKeyDerivation::SecurityParameters));
+	}
 
 	uint64_t file_base = f->get_64();
 	if ((version == PACK_FORMAT_VERSION_V3) || (version == PACK_FORMAT_VERSION_V2 && rel_filebase)) {
@@ -322,7 +332,9 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 		if (flags & PACK_FILE_REMOVAL) { // The file was removed.
 			PackedData::get_singleton()->remove_path(path);
 		} else {
-			PackedData::get_singleton()->add_path(p_path, path, file_base + ofs, size, md5, this, p_replace_files, (flags & PACK_FILE_ENCRYPTED), sparse_bundle);
+			bool is_encrypted = (flags & PACK_FILE_ENCRYPTED) || (flags & PACK_FILE_ENHANCED_ENCRYPTED);
+			bool is_enhanced_encrypted = (flags & PACK_FILE_ENHANCED_ENCRYPTED);
+			PackedData::get_singleton()->add_path(p_path, path, file_base + ofs, size, md5, this, p_replace_files, is_encrypted, sparse_bundle, is_enhanced_encrypted);
 		}
 	}
 
@@ -484,20 +496,39 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
 	ERR_FAIL_COND_MSG(f.is_null(), vformat("Can't open pack-referenced file '%s'.", String(pf.pack)));
 
 	if (pf.encrypted) {
-		Ref<FileAccessEncrypted> fae;
-		fae.instantiate();
-		ERR_FAIL_COND_MSG(fae.is_null(), vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
+		// Check if it's enhanced encryption
+		if (pf.enhanced_encrypted) {
+			Ref<FileAccessEncryptedEnhanced> fae_enhanced;
+			fae_enhanced.instantiate();
+			ERR_FAIL_COND_MSG(fae_enhanced.is_null(), vformat("Can't open enhanced encrypted pack-referenced file '%s'.", String(pf.pack)));
 
-		Vector<uint8_t> key;
-		key.resize(32);
-		for (int i = 0; i < key.size(); i++) {
-			key.write[i] = script_encryption_key[i];
+			Vector<uint8_t> key;
+			key.resize(32);
+			for (int i = 0; i < key.size(); i++) {
+				key.write[i] = script_encryption_key[i];
+			}
+
+			Error err = fae_enhanced->open_and_parse(f, key, FileAccessEncryptedEnhanced::MODE_READ, p_path, false);
+			ERR_FAIL_COND_MSG(err, vformat("Can't open enhanced encrypted pack-referenced file '%s'.", String(pf.pack)));
+			f = fae_enhanced;
+			off = 0;
+		} else {
+			// Traditional encryption
+			Ref<FileAccessEncrypted> fae;
+			fae.instantiate();
+			ERR_FAIL_COND_MSG(fae.is_null(), vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
+
+			Vector<uint8_t> key;
+			key.resize(32);
+			for (int i = 0; i < key.size(); i++) {
+				key.write[i] = script_encryption_key[i];
+			}
+
+			Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+			ERR_FAIL_COND_MSG(err, vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
+			f = fae;
+			off = 0;
 		}
-
-		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-		ERR_FAIL_COND_MSG(err, vformat("Can't open encrypted pack-referenced file '%s'.", String(pf.pack)));
-		f = fae;
-		off = 0;
 	}
 	pos = 0;
 	eof = false;

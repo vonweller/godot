@@ -39,6 +39,9 @@
 #include <mbedtls/md5.h>
 #include <mbedtls/sha1.h>
 #include <mbedtls/sha256.h>
+#include <mbedtls/pkcs5.h>
+#include <mbedtls/hkdf.h>
+#include <mbedtls/md.h>
 #if MBEDTLS_VERSION_MAJOR >= 3
 #include <mbedtls/compat-2.x.h>
 #endif
@@ -247,5 +250,39 @@ Error CryptoCore::sha1(const uint8_t *p_src, size_t p_src_len, unsigned char r_h
 
 Error CryptoCore::sha256(const uint8_t *p_src, size_t p_src_len, unsigned char r_hash[32]) {
 	int ret = mbedtls_sha256_ret(p_src, p_src_len, r_hash, 0);
+	return ret ? FAILED : OK;
+}
+
+// Enhanced cryptographic functions for PCK encryption
+Error CryptoCore::pbkdf2_hmac_sha256(const uint8_t *p_password, size_t p_password_len,
+									 const uint8_t *p_salt, size_t p_salt_len,
+									 uint32_t p_iterations,
+									 uint8_t *r_output, size_t p_output_len) {
+	int ret = mbedtls_pkcs5_pbkdf2_hmac_ext(MBEDTLS_MD_SHA256, p_password, p_password_len,
+											p_salt, p_salt_len, p_iterations,
+											p_output_len, r_output);
+	return ret ? FAILED : OK;
+}
+
+Error CryptoCore::hkdf_sha256(const uint8_t *p_salt, size_t p_salt_len,
+							 const uint8_t *p_ikm, size_t p_ikm_len,
+							 const uint8_t *p_info, size_t p_info_len,
+							 uint8_t *r_okm, size_t p_okm_len) {
+	const mbedtls_md_info_t *info_sha256 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+	ERR_FAIL_COND_V(info_sha256 == nullptr, FAILED);
+	
+	int ret = mbedtls_hkdf(info_sha256, p_salt, p_salt_len,
+						   p_ikm, p_ikm_len, p_info, p_info_len,
+						   r_okm, p_okm_len);
+	return ret ? FAILED : OK;
+}
+
+Error CryptoCore::hmac_sha256(const uint8_t *p_key, size_t p_key_len,
+							 const uint8_t *p_data, size_t p_data_len,
+							 uint8_t r_hash[32]) {
+	const mbedtls_md_info_t *info_sha256 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+	ERR_FAIL_COND_V(info_sha256 == nullptr, FAILED);
+	
+	int ret = mbedtls_md_hmac(info_sha256, p_key, p_key_len, p_data, p_data_len, r_hash);
 	return ret ? FAILED : OK;
 }

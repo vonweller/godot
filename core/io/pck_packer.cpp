@@ -33,6 +33,7 @@
 #include "core/crypto/crypto_core.h"
 #include "core/io/file_access.h"
 #include "core/io/file_access_encrypted.h"
+#include "core/io/file_access_encrypted_enhanced.h"
 #include "core/io/file_access_pack.h" // PACK_HEADER_MAGIC, PACK_FORMAT_VERSION
 #include "core/version.h"
 
@@ -47,8 +48,15 @@ static int _get_pad(int p_alignment, int p_n) {
 }
 
 void PCKPacker::_bind_methods() {
+	// 传统方法
 	ClassDB::bind_method(D_METHOD("pck_start", "pck_path", "alignment", "key", "encrypt_directory"), &PCKPacker::pck_start, DEFVAL(32), DEFVAL("0000000000000000000000000000000000000000000000000000000000000000"), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("add_file", "target_path", "source_path", "encrypt"), &PCKPacker::add_file, DEFVAL(false));
+	
+	// 增强加密方法 - GDScript可直接调用
+	ClassDB::bind_method(D_METHOD("pck_start_enhanced", "pck_path", "alignment", "key", "encrypt_directory", "kdf_iterations"), &PCKPacker::pck_start_enhanced, DEFVAL(32), DEFVAL("0000000000000000000000000000000000000000000000000000000000000000"), DEFVAL(false), DEFVAL(100000));
+	ClassDB::bind_method(D_METHOD("add_file_enhanced", "target_path", "source_path", "enhanced_encrypt"), &PCKPacker::add_file_enhanced, DEFVAL(false));
+	
+	// 通用方法
 	ClassDB::bind_method(D_METHOD("add_file_removal", "target_path"), &PCKPacker::add_file_removal);
 	ClassDB::bind_method(D_METHOD("flush", "verbose"), &PCKPacker::flush, DEFVAL(false));
 }
@@ -99,7 +107,74 @@ Error PCKPacker::pck_start(const String &p_pck_path, int p_alignment, const Stri
 	if (enc_dir) {
 		pack_flags |= PACK_DIR_ENCRYPTED;
 	}
+	if (enhanced_encryption) {
+		pack_flags |= PACK_ENHANCED_ENCRYPTION;
+	}
 	file->store_32(pack_flags); // flags
+
+	file_base_ofs = file->get_position();
+	file->store_64(0); // Files base.
+
+	dir_base_ofs = file->get_position();
+	file->store_64(0); // Directory offset.
+
+	for (int i = 0; i < 16; i++) {
+		file->store_32(0); // Reserved.
+	}
+
+	// Align for first file.
+	int pad = _get_pad(alignment, file->get_position());
+	for (int i = 0; i < pad; i++) {
+		file->store_8(0);
+	}
+
+	file_base = file->get_position();
+	file->seek(file_base_ofs);
+	file->store_64(file_base); // Update files base.
+	file->seek(file_base);
+
+	files.clear();
+
+	return OK;
+}
+
+Error PCKPacker::pck_start_enhanced(const String &p_pck_path, int p_alignment, const String &p_key, bool p_encrypt_directory, uint32_t p_kdf_iterations) {
+	ERR_FAIL_COND_V_MSG((p_key.is_empty() || !p_key.is_valid_hex_number(false) || p_key.length() != 64), ERR_CANT_CREATE, "Invalid Encryption Key (must be 64 characters long).");
+	ERR_FAIL_COND_V_MSG(p_alignment <= 0, ERR_CANT_CREATE, "Invalid alignment, must be greater then 0.");
+	ERR_FAIL_COND_V_MSG(p_kdf_iterations < 10000 || p_kdf_iterations > 1000000, ERR_CANT_CREATE, "Invalid KDF iterations (must be between 10,000 and 1,000,000).");
+
+	// Convert hex string to key
+	key = PCKKeyDerivation::hex_string_to_key(p_key);
+	ERR_FAIL_COND_V(key.size() != 32, ERR_CANT_CREATE);
+	
+	enc_dir = p_encrypt_directory;
+	enhanced_encryption = true;
+	
+	// Generate security parameters for enhanced encryption
+	security_params = PCKKeyDerivation::generate_security_parameters(p_kdf_iterations);
+
+	file = FileAccess::open(p_pck_path, FileAccess::WRITE);
+	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_CANT_CREATE, vformat("Can't open file to write: '%s'.", String(p_pck_path)));
+
+	alignment = p_alignment;
+
+	file->store_32(PACK_HEADER_MAGIC);
+	file->store_32(PACK_FORMAT_VERSION);
+	file->store_32(GODOT_VERSION_MAJOR);
+	file->store_32(GODOT_VERSION_MINOR);
+	file->store_32(GODOT_VERSION_PATCH);
+
+	uint32_t pack_flags = PACK_REL_FILEBASE;
+	if (enc_dir) {
+		pack_flags |= PACK_DIR_ENCRYPTED;
+	}
+	if (enhanced_encryption) {
+		pack_flags |= PACK_ENHANCED_ENCRYPTION;
+	}
+	file->store_32(pack_flags); // flags
+
+	// Store enhanced encryption security parameters
+	file->store_buffer((const uint8_t *)&security_params, sizeof(PCKKeyDerivation::SecurityParameters));
 
 	file_base_ofs = file->get_position();
 	file->store_64(0); // Files base.
@@ -201,6 +276,63 @@ Error PCKPacker::add_file(const String &p_target_path, const String &p_source_pa
 	return OK;
 }
 
+Error PCKPacker::add_file_enhanced(const String &p_target_path, const String &p_source_path, bool p_enhanced_encrypt) {
+	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_INVALID_PARAMETER, "File must be opened before use.");
+	ERR_FAIL_COND_V_MSG(!enhanced_encryption, ERR_INVALID_PARAMETER, "Enhanced encryption mode not enabled. Use pck_start_enhanced first.");
+
+	Ref<FileAccess> f = FileAccess::open(p_source_path, FileAccess::READ);
+	if (f.is_null()) {
+		return ERR_FILE_CANT_OPEN;
+	}
+
+	File pf;
+	// Simplify path here and on every 'files' access so that paths that have extra '/'
+	// symbols or 'res://' in them still match the MD5 hash for the saved path.
+	pf.path = p_target_path.simplify_path().trim_prefix("res://");
+	pf.src_path = p_source_path;
+	pf.ofs = file->get_position();
+	pf.size = f->get_length();
+
+	Vector<uint8_t> data = FileAccess::get_file_as_bytes(p_source_path);
+	{
+		unsigned char hash[16];
+		CryptoCore::md5(data.ptr(), data.size(), hash);
+		pf.md5.resize(16);
+		for (int i = 0; i < 16; i++) {
+			pf.md5.write[i] = hash[i];
+		}
+	}
+	pf.enhanced_encrypted = p_enhanced_encrypt;
+
+	Ref<FileAccess> ftmp = file;
+
+	Ref<FileAccessEncryptedEnhanced> fae_enhanced;
+	if (p_enhanced_encrypt) {
+		fae_enhanced.instantiate();
+		ERR_FAIL_COND_V(fae_enhanced.is_null(), ERR_CANT_CREATE);
+
+		Error err = fae_enhanced->open_and_parse(file, key, FileAccessEncryptedEnhanced::MODE_WRITE_AES256_ENHANCED, pf.path, false, security_params);
+		ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
+		ftmp = fae_enhanced;
+	}
+
+	ftmp->store_buffer(data);
+
+	if (fae_enhanced.is_valid()) {
+		ftmp.unref();
+		fae_enhanced.unref();
+	}
+
+	int pad = _get_pad(alignment, file->get_position());
+	for (int j = 0; j < pad; j++) {
+		file->store_8(0);
+	}
+
+	files.push_back(pf);
+
+	return OK;
+}
+
 Error PCKPacker::flush(bool p_verbose) {
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_INVALID_PARAMETER, "File must be opened before use.");
 
@@ -249,6 +381,9 @@ Error PCKPacker::flush(bool p_verbose) {
 		uint32_t flags = 0;
 		if (files[i].encrypted) {
 			flags |= PACK_FILE_ENCRYPTED;
+		}
+		if (files[i].enhanced_encrypted) {
+			flags |= PACK_FILE_ENHANCED_ENCRYPTED;
 		}
 		if (files[i].removal) {
 			flags |= PACK_FILE_REMOVAL;
