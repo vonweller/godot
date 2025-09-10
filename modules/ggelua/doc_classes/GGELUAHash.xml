@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="GGELUAHash" inherits="RefCounted" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		GGELUA哈希工具类。
+	</brief_description>
+	<description>
+		GGELUAHash提供文件名哈希计算功能，用于WDF文件的文件索引。
+		使用与原始游戏相同的哈希算法，确保兼容性。
+	</description>
+	<tutorials>
+		<link title="GGELUA模块使用指南">https://github.com/example/ggelua-tutorial</link>
+	</tutorials>
+	<methods>
+		<method name="calculate_hash" qualifiers="static">
+			<return type="int" />
+			<param index="0" name="path" type="String" />
+			<description>
+				计算文件路径的哈希值。
+				路径会自动转换为小写并将'/'替换为'\'以确保一致性。
+				[codeblock]
+				# 计算单个文件名的哈希
+				var hash1 = GGELUAHash.calculate_hash("player.tcp")
+				print("player.tcp 哈希值: 0x", "%08X" % hash1)
+				
+				# 计算带路径的文件哈希
+				var hash2 = GGELUAHash.calculate_hash("shape/monster.tcp")
+				print("shape/monster.tcp 哈希值: 0x", "%08X" % hash2)
+				
+				# 在WDF中查找文件
+				var wdf = WDFArchive.new()
+				if wdf.open("res://data.wdf") == OK:
+					var index = wdf.find_file_by_hash(hash1)
+					if index >= 0:
+						print("找到文件 player.tcp，索引: ", index)
+						var tcp_loader = wdf.get_tcp_file(index)
+						# 使用TCP文件...
+					else:
+						print("未找到文件 player.tcp")
+				
+				# 批量计算文件哈希
+				var file_names = ["player.tcp", "monster.tcp", "npc.tcp", "effect.tcp"]
+				var hash_map = {}
+				for file_name in file_names:
+					var hash_value = GGELUAHash.calculate_hash(file_name)
+					hash_map[file_name] = hash_value
+					print(file_name, " -> 0x", "%08X" % hash_value)
+				
+				# 使用哈希映射快速查找
+				if hash_map.has("player.tcp"):
+					var player_hash = hash_map["player.tcp"]
+					var player_data = wdf.get_file_data_by_hash(player_hash)
+					print("获取到player.tcp数据，大小: ", player_data.size())
+				[/codeblock]
+			</description>
+		</method>
+	</methods>
+</class>

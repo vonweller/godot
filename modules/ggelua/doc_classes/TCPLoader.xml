@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="TCPLoader" inherits="RefCounted" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		TCP格式动画文件加载器。
+	</brief_description>
+	<description>
+		TCPLoader用于加载和解析TCP格式的动画文件，支持《大话西游2》和《梦幻西游》的精灵动画格式。
+		TCP文件包含多组多帧的动画数据，使用压缩格式存储，支持透明度和调色板变换。
+	</description>
+	<tutorials>
+		<link title="GGELUA模块使用指南">https://github.com/example/ggelua-tutorial</link>
+	</tutorials>
+	<methods>
+		<method name="load_from_file">
+			<return type="int" enum="Error" />
+			<param index="0" name="path" type="String" />
+			<description>
+				从文件路径加载TCP文件。
+				返回Error.OK表示成功，其他值表示失败。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					print("TCP文件加载成功")
+					print("动画组数: ", tcp_loader.get_group_count())
+					print("每组帧数: ", tcp_loader.get_frame_count())
+					print("总帧数: ", tcp_loader.get_total_frames())
+					print("动画尺寸: ", tcp_loader.get_size())
+				else:
+					print("TCP文件加载失败")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="load_from_buffer">
+			<return type="int" enum="Error" />
+			<param index="0" name="buffer" type="PackedByteArray" />
+			<description>
+				从字节数组加载TCP数据。
+				返回Error.OK表示成功，其他值表示失败。
+				[codeblock]
+				# 从WDF包中获取TCP数据
+				var wdf = WDFArchive.new()
+				if wdf.open("res://data.wdf") == OK:
+					var tcp_data = wdf.get_file_data(5)  # 获取索引5的文件
+					
+					var tcp_loader = TCPLoader.new()
+					if tcp_loader.load_from_buffer(tcp_data) == OK:
+						print("从缓冲区加载TCP成功")
+						# 创建动画精灵
+						var sprite = AnimatedSprite2D.new()
+						add_child(sprite)
+					else:
+						print("TCP数据格式错误")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_frame">
+			<return type="Image" />
+			<param index="0" name="frame_id" type="int" />
+			<description>
+				获取指定帧的图像数据。
+				frame_id从0开始，返回解码后的Image对象，如果帧不存在返回null。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					# 获取第一帧图像
+					var frame_image = tcp_loader.get_frame(0)
+					if frame_image:
+						# 创建纹理并显示
+						var texture = ImageTexture.create_from_image(frame_image)
+						var sprite = Sprite2D.new()
+						sprite.texture = texture
+						add_child(sprite)
+						
+						print("帧图像尺寸: ", frame_image.get_size())
+					else:
+						print("获取帧图像失败")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_frame_info">
+			<return type="Dictionary" />
+			<param index="0" name="frame_id" type="int" />
+			<description>
+				获取指定帧的信息，包括位置(x,y)和尺寸(width,height)。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var frame_info = tcp_loader.get_frame_info(0)
+					if frame_info.has("x"):
+						print("帧信息:")
+						print("  位置: (", frame_info.x, ", ", frame_info.y, ")")
+						print("  尺寸: ", frame_info.width, "x", frame_info.height)
+						print("  偏移: (", frame_info.get("offset_x", 0), ", ", frame_info.get("offset_y", 0), ")")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_group_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取动画组数(方向数)。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var group_count = tcp_loader.get_group_count()
+					print("动画方向数: ", group_count)
+					
+					# 通常8方向动画: 上、右上、右、右下、下、左下、左、左上
+					var directions = ["上", "右上", "右", "右下", "下", "左下", "左", "左上"]
+					for i in range(min(group_count, directions.size())):
+						print("方向 ", i, ": ", directions[i])
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_frame_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取每组的帧数。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var frame_count = tcp_loader.get_frame_count()
+					var group_count = tcp_loader.get_group_count()
+					
+					print("每个方向的帧数: ", frame_count)
+					print("总帧数: ", frame_count * group_count)
+					
+					# 创建动画播放器
+					var anim_player = AnimationPlayer.new()
+					var animation = Animation.new()
+					animation.length = frame_count * 0.1  # 每帧0.1秒
+					# 设置动画轨道...
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_total_frames" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取总帧数 (组数 × 每组帧数)。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var total_frames = tcp_loader.get_total_frames()
+					print("TCP文件总帧数: ", total_frames)
+					
+					# 预加载所有帧到纹理数组
+					var textures = []
+					for i in range(total_frames):
+						var frame_image = tcp_loader.get_frame(i)
+						if frame_image:
+							var texture = ImageTexture.create_from_image(frame_image)
+							textures.append(texture)
+					
+					print("成功加载 ", textures.size(), " 个纹理")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_size" qualifiers="const">
+			<return type="Vector2i" />
+			<description>
+				获取动画的整体尺寸。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var size = tcp_loader.get_size()
+					print("动画尺寸: ", size.x, "x", size.y)
+					
+					# 根据尺寸创建碰撞体
+					var collision_shape = RectangleShape2D.new()
+					collision_shape.size = Vector2(size.x, size.y)
+					
+					var collision = CollisionShape2D.new()
+					collision.shape = collision_shape
+					add_child(collision)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_key_point" qualifiers="const">
+			<return type="Vector2i" />
+			<description>
+				获取动画的关键点位置。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var key_point = tcp_loader.get_key_point()
+					print("关键点位置: (", key_point.x, ", ", key_point.y, ")")
+					
+					# 关键点通常用于定位精灵的中心或脚部位置
+					var sprite = Sprite2D.new()
+					sprite.offset = Vector2(-key_point.x, -key_point.y)
+					add_child(sprite)
+					
+					# 在关键点位置显示标记
+					var marker = ColorRect.new()
+					marker.size = Vector2(4, 4)
+					marker.position = Vector2(key_point.x - 2, key_point.y - 2)
+					marker.color = Color.RED
+					add_child(marker)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_dts_data" qualifiers="const">
+			<return type="PackedByteArray" />
+			<description>
+				获取DTS数据（延迟时间信息）。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					var dts_data = tcp_loader.get_dts_data()
+					if dts_data.size() > 0:
+						print("DTS数据大小: ", dts_data.size(), " 字节")
+						
+						# 解析延迟时间（每帧2字节，小端序）
+						var frame_delays = []
+						for i in range(0, dts_data.size(), 2):
+							if i + 1 < dts_data.size():
+								var delay = dts_data[i] + (dts_data[i + 1] << 8)
+								frame_delays.append(delay * 0.02)  # 转换为秒
+						
+						print("帧延迟时间: ", frame_delays)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="set_palette_transform">
+			<return type="void" />
+			<param index="0" name="start" type="int" />
+			<param index="1" name="end" type="int" />
+			<param index="2" name="r_transform" type="Vector3" />
+			<param index="3" name="g_transform" type="Vector3" />
+			<param index="4" name="b_transform" type="Vector3" />
+			<description>
+				设置调色板颜色变换，用于实现换色效果。
+				start和end指定变换的调色板范围，三个Vector3分别为R、G、B通道的变换矩阵。
+				[codeblock]
+				var tcp_loader = TCPLoader.new()
+				if tcp_loader.load_from_file("res://player.tcp") == OK:
+					# 设置红色换色效果（将调色板16-31范围变为红色调）
+					tcp_loader.set_palette_transform(
+						16, 31,  # 调色板范围
+						Vector3(1.5, 0.5, 0.5),  # R通道变换
+						Vector3(0.5, 0.8, 0.5),  # G通道变换
+						Vector3(0.5, 0.5, 0.8)   # B通道变换
+					)
+					
+					# 获取变换后的帧图像
+					var frame_image = tcp_loader.get_frame(0)
+					if frame_image:
+						var texture = ImageTexture.create_from_image(frame_image)
+						var sprite = Sprite2D.new()
+						sprite.texture = texture
+						add_child(sprite)
+						print("应用了红色换色效果")
+				[/codeblock]
+			</description>
+		</method>
+	</methods>
+</class>

@@ -1,0 +1,499 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="MapLoader" inherits="RefCounted" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		游戏地图文件加载器。
+	</brief_description>
+	<description>
+		MapLoader用于加载和解析游戏地图文件，支持M1.0（大话西游）和MAPX（梦幻西游）格式。
+		地图文件包含地表图像、遮罩数据和障碍信息，按320x240像素分块存储。
+	</description>
+	<tutorials>
+		<link title="GGELUA模块使用指南">https://github.com/example/ggelua-tutorial</link>
+	</tutorials>
+	<methods>
+		<method name="open">
+			<return type="int" enum="Error" />
+			<param index="0" name="path" type="String" />
+			<description>
+				打开地图文件。
+				返回Error.OK表示成功，其他值表示失败。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				var result = map_loader.open("res://maps/1001.map")
+				if result == OK:
+					print("地图加载成功")
+				else:
+					print("地图加载失败，错误码: ", result)
+				
+				# 错误处理示例
+				match result:
+					OK:
+						print("地图文件打开成功")
+					ERR_FILE_NOT_FOUND:
+						print("地图文件不存在")
+					ERR_FILE_CORRUPT:
+						print("地图文件损坏")
+					_:
+						print("未知错误: ", result)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="close">
+			<return type="void" />
+			<description>
+				关闭当前打开的地图文件。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				# ... 使用地图数据 ...
+				map_loader.close()  # 释放资源
+				
+				# 在_notification中自动关闭
+				func _notification(what):
+					if what == NOTIFICATION_WM_CLOSE_REQUEST:
+						if map_loader:
+							map_loader.close()
+						get_tree().quit()
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_map_tile">
+			<return type="Image" />
+			<param index="0" name="map_id" type="int" />
+			<description>
+				获取指定地图块的地表图像(320x240像素)。
+				[codeblock]
+				# 基本用法 - 获取单个地图块
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var tile_image = map_loader.get_map_tile(0)  # 获取第一个地图块
+				if tile_image:
+					var sprite = Sprite2D.new()
+					sprite.texture = ImageTexture.create_from_image(tile_image)
+					add_child(sprite)
+				
+				# 批量加载所有地图块
+				var row_count = map_loader.get_row_count()
+				var col_count = map_loader.get_col_count()
+				
+				for row in range(row_count):
+					for col in range(col_count):
+						var tile_id = row * col_count + col
+						var tile_image = map_loader.get_map_tile(tile_id)
+						
+						if tile_image:
+							var sprite = Sprite2D.new()
+							sprite.name = "tile_%d" % tile_id
+							sprite.position = Vector2(col * 320, row * 240)
+							sprite.texture = ImageTexture.create_from_image(tile_image)
+							sprite.centered = false
+							add_child(sprite)
+				
+				# 错误处理
+				var invalid_tile = map_loader.get_map_tile(999999)
+				if not invalid_tile:
+					print("地图块不存在或加载失败")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_mask_info">
+			<return type="Array" />
+			<param index="0" name="map_id" type="int" />
+			<description>
+				获取指定地图块的遮罩信息列表。
+				[codeblock]
+				# 基本用法 - 获取遮罩信息
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var mask_info = map_loader.get_mask_info(0)  # 获取第一个地图块的遮罩
+				print("遮罩数量: ", mask_info.size())
+				
+				# 遍历所有遮罩信息
+				for i in range(mask_info.size()):
+					var mask = mask_info[i]
+					if typeof(mask) == TYPE_DICTIONARY:
+						print("遮罩 %d:" % i)
+						print("  位置: (%d, %d)" % [mask.get("x", 0), mask.get("y", 0)])
+						print("  尺寸: %dx%d" % [mask.get("width", 0), mask.get("height", 0)])
+				
+				# 检查地图块是否有遮罩
+				func has_masks(map_id: int) -> bool:
+					var masks = map_loader.get_mask_info(map_id)
+					return masks.size() > 0
+				
+				# 统计所有地图块的遮罩数量
+				var total_masks = 0
+				for tile_id in range(map_loader.get_map_count()):
+					var masks = map_loader.get_mask_info(tile_id)
+					total_masks += masks.size()
+				print("总遮罩数量: ", total_masks)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_mask_image">
+			<return type="Image" />
+			<param index="0" name="map_id" type="int" />
+			<param index="1" name="mask_index" type="int" />
+			<description>
+				获取指定遮罩的图像数据。
+				[codeblock]
+				# 基本用法 - 获取遮罩图像
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				# 获取第一个地图块的第一个遮罩
+				var mask_image = map_loader.get_mask_image(0, 0)
+				if mask_image:
+					var sprite = Sprite2D.new()
+					sprite.texture = ImageTexture.create_from_image(mask_image)
+					add_child(sprite)
+				
+				# 批量处理所有遮罩
+				for tile_id in range(map_loader.get_map_count()):
+					var mask_info = map_loader.get_mask_info(tile_id)
+					
+					for mask_index in range(mask_info.size()):
+						var mask_image = map_loader.get_mask_image(tile_id, mask_index)
+						if mask_image:
+							var sprite = Sprite2D.new()
+							sprite.name = "mask_%d_%d" % [tile_id, mask_index]
+							sprite.texture = ImageTexture.create_from_image(mask_image)
+							
+							# 根据遮罩信息设置位置
+							var mask_data = mask_info[mask_index]
+							if typeof(mask_data) == TYPE_DICTIONARY:
+								sprite.position = Vector2(mask_data.get("x", 0), mask_data.get("y", 0))
+							
+							add_child(sprite)
+				
+				# 错误处理
+				var invalid_mask = map_loader.get_mask_image(0, 999)
+				if not invalid_mask:
+					print("遮罩不存在或加载失败")
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_cell_data">
+			<return type="PackedByteArray" />
+			<description>
+				获取整个地图的障碍数据。每个地图块包含192字节(12行×16列)的障碍信息，值为0表示可通行，值为1表示障碍物。
+				[codeblock]
+				# 基本用法 - 获取障碍数据
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var cell_data = map_loader.get_cell_data()
+				print("障碍数据大小: ", cell_data.size(), " bytes")
+				
+				# 统计障碍物和可通行区域
+				var collision_count = 0
+				var walkable_count = 0
+				
+				for i in range(cell_data.size()):
+					var cell_value = int(cell_data[i])
+					if cell_value == 1:
+						collision_count += 1
+					else:
+						walkable_count += 1
+				
+				print("障碍物数量: ", collision_count)
+				print("可通行数量: ", walkable_count)
+				
+				# 解析单个地图块的障碍数据
+				func get_block_collision(block_id: int) -> Array:
+					var block_data = []
+					var data_start = block_id * 192
+					
+					if data_start + 192 <= cell_data.size():
+						for local_row in range(12):
+							var row_data = []
+							for local_col in range(16):
+								var index = data_start + local_row * 16 + local_col
+								row_data.append(int(cell_data[index]))
+							block_data.append(row_data)
+					
+					return block_data
+				
+				# 检查指定位置是否可通行
+				func is_walkable(global_x: int, global_y: int) -> bool:
+					var block_col = global_x / 16
+					var block_row = global_y / 12
+					var local_col = global_x % 16
+					var local_row = global_y % 12
+					
+					var block_id = block_row * map_loader.get_col_count() + block_col
+					var data_index = block_id * 192 + local_row * 16 + local_col
+					
+					if data_index < cell_data.size():
+						return int(cell_data[data_index]) == 0
+					return false
+				
+				# 可视化障碍数据
+				func visualize_collision():
+					var collision_layer = Node2D.new()
+					add_child(collision_layer)
+					
+					for block_row in range(map_loader.get_row_count()):
+						for block_col in range(map_loader.get_col_count()):
+							var block_id = block_row * map_loader.get_col_count() + block_col
+							var data_start = block_id * 192
+							
+							for local_row in range(12):
+								for local_col in range(16):
+									var index = data_start + local_row * 16 + local_col
+									if index < cell_data.size() and int(cell_data[index]) == 1:
+										var dot = ColorRect.new()
+										dot.size = Vector2(20, 20)
+										dot.position = Vector2(
+											(block_col * 16 + local_col) * 20,
+											(block_row * 12 + local_row) * 20
+										)
+										dot.color = Color.RED
+										collision_layer.add_child(dot)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_map_block_data">
+			<return type="Dictionary" />
+			<param index="0" name="map_id" type="int" />
+			<description>
+				获取地图块的原始数据，用于调试和分析。
+				[codeblock]
+				# 基本用法 - 获取地图块原始数据
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var block_data = map_loader.get_map_block_data(0)
+				print("地图块数据: ", block_data)
+				
+				# 检查数据结构
+				if block_data.has("jpeg_size"):
+					print("JPEG数据大小: ", block_data["jpeg_size"])
+				if block_data.has("cell_size"):
+					print("障碍数据大小: ", block_data["cell_size"])
+				if block_data.has("mask_count"):
+					print("遮罩数量: ", block_data["mask_count"])
+				
+				# 调试所有地图块
+				func debug_all_blocks():
+					for i in range(map_loader.get_map_count()):
+						var data = map_loader.get_map_block_data(i)
+						print("块 %d: %s" % [i, data])
+				
+				# 分析地图块类型
+				func analyze_block_types():
+					var jpeg_blocks = 0
+					var cell_blocks = 0
+					var mask_blocks = 0
+					
+					for i in range(map_loader.get_map_count()):
+						var data = map_loader.get_map_block_data(i)
+						if data.has("jpeg_size") and data["jpeg_size"] > 0:
+							jpeg_blocks += 1
+						if data.has("cell_size") and data["cell_size"] > 0:
+							cell_blocks += 1
+						if data.has("mask_count") and data["mask_count"] > 0:
+							mask_blocks += 1
+					
+					print("包含JPEG的块: ", jpeg_blocks)
+					print("包含障碍的块: ", cell_blocks)
+					print("包含遮罩的块: ", mask_blocks)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_row_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取地图的行数。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var rows = map_loader.get_row_count()
+				print("地图行数: ", rows)
+				
+				# 计算地图块ID
+				func get_tile_id(row: int, col: int) -> int:
+					return row * map_loader.get_col_count() + col
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_col_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取地图的列数。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var cols = map_loader.get_col_count()
+				print("地图列数: ", cols)
+				
+				# 从地图块ID计算行列
+				func get_tile_position(tile_id: int) -> Vector2i:
+					var cols = map_loader.get_col_count()
+					return Vector2i(tile_id % cols, tile_id / cols)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_map_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取地图块总数 (行数 × 列数)。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var total_tiles = map_loader.get_map_count()
+				print("地图块总数: ", total_tiles)
+				
+				# 遍历所有地图块
+				for tile_id in range(total_tiles):
+					var tile_image = map_loader.get_map_tile(tile_id)
+					if tile_image:
+						print("处理地图块: ", tile_id)
+				
+				# 验证计算
+				var rows = map_loader.get_row_count()
+				var cols = map_loader.get_col_count()
+				assert(total_tiles == rows * cols)
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_mask_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				获取遮罩总数。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var total_masks = map_loader.get_mask_count()
+				print("遮罩总数: ", total_masks)
+				
+				# 检查是否有遮罩
+				if total_masks > 0:
+					print("地图包含遮罩数据")
+				else:
+					print("地图不包含遮罩")
+				
+				# 统计每个地图块的遮罩数量
+				func count_masks_per_tile():
+					var mask_distribution = {}
+					for tile_id in range(map_loader.get_map_count()):
+						var mask_info = map_loader.get_mask_info(tile_id)
+						var count = mask_info.size()
+						if not mask_distribution.has(count):
+							mask_distribution[count] = 0
+						mask_distribution[count] += 1
+					
+					print("遮罩分布:")
+					for mask_count in mask_distribution.keys():
+						print("  %d个遮罩的地图块: %d个" % [mask_count, mask_distribution[mask_count]])
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_map_size" qualifiers="const">
+			<return type="Vector2i" />
+			<description>
+				获取地图的像素尺寸。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var map_size = map_loader.get_map_size()
+				print("地图尺寸: %dx%d 像素" % [map_size.x, map_size.y])
+				
+				# 计算地图块数量
+				var tile_rows = ceil(map_size.y / 240.0)
+				var tile_cols = ceil(map_size.x / 320.0)
+				print("地图块: %dx%d" % [tile_cols, tile_rows])
+				
+				# 设置摄像机范围
+				func setup_camera_bounds(camera: Camera2D):
+					var size = map_loader.get_map_size()
+					camera.limit_left = 0
+					camera.limit_top = 0
+					camera.limit_right = size.x
+					camera.limit_bottom = size.y
+				
+				# 检查坐标是否在地图范围内
+				func is_in_bounds(pos: Vector2) -> bool:
+					var size = map_loader.get_map_size()
+					return pos.x >= 0 and pos.y >= 0 and pos.x < size.x and pos.y < size.y
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_map_format" qualifiers="const">
+			<return type="String" />
+			<description>
+				获取地图格式 ("M1.0" 或 "MAPX")。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var format = map_loader.get_map_format()
+				print("地图格式: ", format)
+				
+				# 根据格式处理不同逻辑
+				match format:
+					"M1.0":
+						print("大话西游格式地图")
+					"MAPX":
+						print("梦幻西游格式地图")
+					_:
+						print("未知格式: ", format)
+				
+				# 检查格式兼容性
+				func is_supported_format() -> bool:
+					var fmt = map_loader.get_map_format()
+					return fmt in ["M1.0", "MAPX"]
+				[/codeblock]
+			</description>
+		</method>
+		<method name="get_file_path" qualifiers="const">
+			<return type="String" />
+			<description>
+				获取当前打开的地图文件路径。
+				[codeblock]
+				# 基本用法
+				var map_loader = MapLoader.new()
+				map_loader.open("res://maps/1001.map")
+				
+				var file_path = map_loader.get_file_path()
+				print("当前地图文件: ", file_path)
+				
+				# 获取文件名
+				var file_name = file_path.get_file()
+				print("文件名: ", file_name)
+				
+				# 检查是否有文件打开
+				func has_file_open() -> bool:
+					return map_loader.get_file_path() != ""
+				
+				# 地图信息摘要
+				func print_map_summary():
+					if has_file_open():
+						print("=== 地图信息 ===")
+						print("文件: ", map_loader.get_file_path())
+						print("格式: ", map_loader.get_map_format())
+						print("尺寸: ", map_loader.get_map_size())
+						print("块数: %dx%d" % [map_loader.get_col_count(), map_loader.get_row_count()])
+						print("遮罩: ", map_loader.get_mask_count())
+					else:
+						print("没有打开的地图文件")
+				[/codeblock]
+			</description>
+		</method>
+	</methods>
+</class>
