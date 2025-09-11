@@ -1,6 +1,7 @@
 name: 🍏 iOS Builds
 on:
-  workflow_dispatch:
+  workflow_call:
+  
 
 # Global Settings
 env:

@@ -1,6 +1,6 @@
 name: 🤖 Android Builds
 on:
-  workflow_dispatch:
+  workflow_call:
   
 
 # Global Settings
