@@ -690,6 +690,9 @@ void EditorNode::_update_theme(bool p_skip_creation) {
 	editor_dock_manager->update_tab_styles();
 	editor_dock_manager->update_docks_menu();
 	editor_dock_manager->set_tab_icon_max_width(theme->get_constant(SNAME("class_icon_size"), EditorStringName(Editor)));
+#ifdef ANDROID_ENABLED
+	DisplayServer::get_singleton()->window_set_color(theme->get_color(SNAME("background"), EditorStringName(Editor)));
+#endif
 }
 
 Ref<Texture2D> EditorNode::_get_editor_theme_native_menu_icon(const StringName &p_name, bool p_global_menu, bool p_dark_mode) const {
@@ -1690,7 +1693,7 @@ void EditorNode::save_resource_as(const Ref<Resource> &p_resource, const String 
 				file->set_current_file(String());
 			}
 		}
-	} else if (!p_resource->get_path().is_empty()) {
+	} else if (!p_resource->get_path().get_base_dir().is_empty()) {
 		file->set_current_path(p_resource->get_path());
 		if (!extensions.is_empty()) {
 			const String ext = p_resource->get_path().get_extension().to_lower();
@@ -2880,8 +2883,13 @@ void EditorNode::_edit_current(bool p_skip_foreign, bool p_skip_inspector_update
 					}
 					if (!multi_nodes.is_empty()) {
 						// Pick the top-most node.
-						multi_nodes.sort_custom<Node::Comparator>();
 						selected_node = multi_nodes[0];
+						Node::Comparator comparator;
+						for (Node *node : multi_nodes) {
+							if (comparator(node, selected_node)) {
+								selected_node = node;
+							}
+						}
 					}
 				}
 			}
@@ -4400,6 +4408,9 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 		}
 	} else {
 		EditorUndoRedoManager::get_singleton()->clear_history(editor_data.get_current_edited_scene_history_id(), false);
+
+		Dictionary state = editor_data.restore_edited_scene_state(editor_selection, &editor_history);
+		callable_mp(this, &EditorNode::_set_main_scene_state).call_deferred(state, get_edited_scene()); // Do after everything else is done setting up.
 	}
 
 	dependency_errors.clear();
@@ -6293,6 +6304,10 @@ void EditorNode::set_distraction_free_mode(bool p_enter) {
 
 bool EditorNode::is_distraction_free_mode_enabled() const {
 	return distraction_free->is_pressed();
+}
+
+void EditorNode::set_center_split_offset(int p_offset) {
+	center_split->set_split_offset(p_offset);
 }
 
 Dictionary EditorNode::drag_resource(const Ref<Resource> &p_res, Control *p_from) {

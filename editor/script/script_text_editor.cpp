@@ -523,9 +523,10 @@ void ScriptTextEditor::_inline_object_draw(const Dictionary &p_info, const Rect2
 		if (color_alpha_texture.is_null()) {
 			color_alpha_texture = inline_color_picker->get_theme_icon("sample_bg", "ColorPicker");
 		}
-		code_editor->get_text_editor()->draw_texture_rect(color_alpha_texture, col_rect, false);
-		code_editor->get_text_editor()->draw_rect(col_rect, Color(p_info["color"]));
-		code_editor->get_text_editor()->draw_rect(col_rect, Color(1, 1, 1), false, 1);
+		RID text_ci = code_editor->get_text_editor()->get_text_canvas_item();
+		RS::get_singleton()->canvas_item_add_rect(text_ci, p_rect.grow(-3), Color(1, 1, 1));
+		color_alpha_texture->draw_rect(text_ci, col_rect);
+		RS::get_singleton()->canvas_item_add_rect(text_ci, col_rect, Color(p_info["color"]));
 	}
 }
 
@@ -1728,27 +1729,27 @@ void ScriptTextEditor::_edit_option(int p_op) {
 	switch (p_op) {
 		case EDIT_UNDO: {
 			tx->undo();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_REDO: {
 			tx->redo();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_CUT: {
 			tx->cut();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_COPY: {
 			tx->copy();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_PASTE: {
 			tx->paste();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_SELECT_ALL: {
 			tx->select_all();
-			callable_mp((Control *)tx, &Control::grab_focus).call_deferred();
+			callable_mp((Control *)tx, &Control::grab_focus).call_deferred(false);
 		} break;
 		case EDIT_MOVE_LINE_UP: {
 			code_editor->get_text_editor()->move_lines_up();

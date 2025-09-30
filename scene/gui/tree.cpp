@@ -150,6 +150,7 @@ void TreeItem::_change_tree(Tree *p_tree) {
 			tree->edited_item = nullptr;
 			tree->pressing_for_editor = false;
 		}
+		tree->update_min_size_for_item_change();
 		tree->queue_accessibility_update();
 		tree->queue_redraw();
 	}
@@ -880,6 +881,7 @@ TreeItem *TreeItem::create_child(int p_index) {
 	TreeItem *ti = memnew(TreeItem(tree));
 	if (tree) {
 		ti->cells.resize(tree->columns.size());
+		tree->update_min_size_for_item_change();
 		tree->queue_accessibility_update();
 		tree->queue_redraw();
 	}
@@ -1286,6 +1288,15 @@ bool TreeItem::is_selectable(int p_column) const {
 bool TreeItem::is_selected(int p_column) {
 	ERR_FAIL_INDEX_V(p_column, cells.size(), false);
 	return cells[p_column].selectable && cells[p_column].selected;
+}
+
+bool TreeItem::is_any_column_selected() const {
+	for (const Cell &cell : cells) {
+		if (cell.selectable && cell.selected) {
+			return true;
+		}
+	}
+	return false;
 }
 
 void TreeItem::set_as_cursor(int p_column) {
@@ -2327,13 +2338,13 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 
 					if (p_item->cells[0].selected) {
 						if (is_row_hovered) {
-							if (has_focus()) {
+							if (has_focus(true)) {
 								theme_cache.hovered_selected_focus->draw(ci, row_rect);
 							} else {
 								theme_cache.hovered_selected->draw(ci, row_rect);
 							}
 						} else {
-							if (has_focus()) {
+							if (has_focus(true)) {
 								theme_cache.selected_focus->draw(ci, row_rect);
 							} else {
 								theme_cache.selected->draw(ci, row_rect);
@@ -2375,13 +2386,13 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 					}
 					if (p_item->cells[i].selected) {
 						if (is_cell_hovered) {
-							if (has_focus()) {
+							if (has_focus(true)) {
 								theme_cache.hovered_selected_focus->draw(ci, r);
 							} else {
 								theme_cache.hovered_selected->draw(ci, r);
 							}
 						} else {
-							if (has_focus()) {
+							if (has_focus(true)) {
 								theme_cache.selected_focus->draw(ci, r);
 							} else {
 								theme_cache.selected->draw(ci, r);
@@ -2675,7 +2686,7 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 				if (is_layout_rtl()) {
 					cell_rect.position.x = get_size().width - cell_rect.position.x - cell_rect.size.x;
 				}
-				if (has_focus()) {
+				if (has_focus(true)) {
 					theme_cache.cursor->draw(ci, cell_rect);
 				} else {
 					theme_cache.cursor_unfocus->draw(ci, cell_rect);
@@ -2787,7 +2798,7 @@ int Tree::draw_item(const Point2i &p_pos, const Point2 &p_draw_ofs, const Size2 
 						more_prev_ofs = theme_cache.parent_hl_line_margin;
 						prev_hl_ofs = parent_bottom_y;
 						has_sibling_selection = _is_sibling_branch_selected(c);
-					} else if (p_item->is_selected(0)) {
+					} else if (p_item->is_any_column_selected()) {
 						// If parent item is selected (but this item is not), we draw the line using children highlight style.
 						// Siblings of the selected branch can be drawn with a slight offset and their vertical line must appear as highlighted.
 						if (has_sibling_selection) {
@@ -2872,10 +2883,8 @@ int Tree::_count_selected_items(TreeItem *p_from) const {
 }
 
 bool Tree::_is_branch_selected(TreeItem *p_from) const {
-	for (int i = 0; i < columns.size(); i++) {
-		if (p_from->is_selected(i)) {
-			return true;
-		}
+	if (p_from->is_any_column_selected()) {
+		return true;
 	}
 
 	TreeItem *child_item = p_from->get_first_child();
@@ -5080,7 +5089,7 @@ void Tree::_notification(int p_what) {
 
 			// Draw the focus outline last, so that it is drawn in front of the section headings.
 			// Otherwise, section heading backgrounds can appear to be in front of the focus outline when scrolling.
-			if (has_focus()) {
+			if (has_focus(true)) {
 				RenderingServer::get_singleton()->canvas_item_add_clip_ignore(ci, true);
 				theme_cache.focus_style->draw(ci, Rect2(Point2(), get_size()));
 				RenderingServer::get_singleton()->canvas_item_add_clip_ignore(ci, false);
@@ -5201,6 +5210,7 @@ void Tree::item_changed(int p_column, TreeItem *p_item) {
 		}
 		p_item->accessibility_row_dirty = true;
 	}
+	update_min_size_for_item_change();
 	queue_accessibility_update();
 	queue_redraw();
 }
@@ -5252,6 +5262,14 @@ void Tree::item_deselected(int p_column, TreeItem *p_item) {
 	p_item->accessibility_row_dirty = true;
 	queue_accessibility_update();
 	queue_redraw();
+}
+
+void Tree::update_min_size_for_item_change() {
+	// Only need to update when any scroll bar is disabled because that's the only time item size
+	// affects tree size.
+	if (!h_scroll_enabled || !v_scroll_enabled) {
+		update_minimum_size();
+	}
 }
 
 void Tree::set_select_mode(SelectMode p_mode) {
@@ -5588,6 +5606,7 @@ void Tree::set_columns(int p_columns) {
 		selected_col = p_columns - 1;
 		selected_button = -1;
 	}
+	update_min_size_for_item_change();
 	queue_accessibility_update();
 	queue_redraw();
 }

@@ -831,8 +831,12 @@ List<CanvasItem *> CanvasItemEditor::_get_edited_canvas_items(bool p_retrieve_lo
 
 	if (p_remove_canvas_item_if_parent_in_selection) {
 		List<CanvasItem *> filtered_selection;
+		HashSet<const Node *> nodes_in_selection;
 		for (CanvasItem *E : selection) {
-			if (!selection.find(E->get_parent())) {
+			nodes_in_selection.insert(E);
+		}
+		for (CanvasItem *E : selection) {
+			if (!nodes_in_selection.has(E->get_parent())) {
 				filtered_selection.push_back(E);
 			}
 		}
@@ -1606,7 +1610,7 @@ bool CanvasItemEditor::_gui_input_open_scene_on_double_click(const Ref<InputEven
 		List<CanvasItem *> selection = _get_edited_canvas_items();
 		if (selection.size() == 1) {
 			CanvasItem *ci = selection.front()->get();
-			if (!ci->get_scene_file_path().is_empty() && ci != EditorNode::get_singleton()->get_edited_scene()) {
+			if (ci->is_instance() && ci != EditorNode::get_singleton()->get_edited_scene()) {
 				EditorNode::get_singleton()->load_scene(ci->get_scene_file_path());
 				return true;
 			}
@@ -2616,7 +2620,7 @@ bool CanvasItemEditor::_gui_input_select(const Ref<InputEvent> &p_event) {
 				}
 
 				_find_canvas_items_in_rect(Rect2(bsfrom, bsto - bsfrom), scene, &selitems);
-				if (selitems.size() == 1 && editor_selection->get_top_selected_node_list().is_empty()) {
+				if (selitems.size() == 1 && editor_selection->get_selection().is_empty()) {
 					EditorNode::get_singleton()->push_item(selitems.front()->get());
 				}
 				for (CanvasItem *E : selitems) {
@@ -2750,7 +2754,7 @@ void CanvasItemEditor::_gui_input_viewport(const Ref<InputEvent> &p_event) {
 	Ref<InputEventMouseButton> mb = p_event;
 	bool release_lmb = (mb.is_valid() && !mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT); // Required to properly release some stuff (e.g. selection box) while panning.
 
-	if (EDITOR_GET("editors/panning/simple_panning") || !pan_pressed || release_lmb) {
+	if (simple_panning || !pan_pressed || release_lmb) {
 		accepted = true;
 		if (_gui_input_rulers_and_guides(p_event)) {
 			// print_line("Rulers and guides");
@@ -2796,7 +2800,7 @@ void CanvasItemEditor::_gui_input_viewport(const Ref<InputEvent> &p_event) {
 
 	// Grab focus
 	if (!viewport->has_focus() && (!get_viewport()->gui_get_focus_owner() || !get_viewport()->gui_get_focus_owner()->is_text_field())) {
-		callable_mp((Control *)viewport, &Control::grab_focus).call_deferred();
+		callable_mp((Control *)viewport, &Control::grab_focus).call_deferred(false);
 	}
 }
 
@@ -2834,7 +2838,7 @@ void CanvasItemEditor::_update_lock_and_group_button() {
 	bool all_locked = true;
 	bool all_group = true;
 	bool has_canvas_item = false;
-	List<Node *> selection = editor_selection->get_top_selected_node_list();
+	const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 	if (selection.is_empty()) {
 		all_locked = false;
 		all_group = false;
@@ -4139,7 +4143,8 @@ void CanvasItemEditor::_update_editor_settings() {
 
 	context_toolbar_panel->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("ContextualToolbar"), EditorStringName(EditorStyles)));
 
-	panner->setup((ViewPanner::ControlScheme)EDITOR_GET("editors/panning/2d_editor_panning_scheme").operator int(), ED_GET_SHORTCUT("canvas_item_editor/pan_view"), bool(EDITOR_GET("editors/panning/simple_panning")));
+	simple_panning = EDITOR_GET("editors/panning/simple_panning");
+	panner->setup((ViewPanner::ControlScheme)EDITOR_GET("editors/panning/2d_editor_panning_scheme").operator int(), ED_GET_SHORTCUT("canvas_item_editor/pan_view"), simple_panning);
 	panner->set_scroll_speed(EDITOR_GET("editors/panning/2d_editor_pan_speed"));
 	panner->setup_warped_panning(get_viewport(), EDITOR_GET("editors/panning/warped_mouse_panning"));
 	panner->set_zoom_style((ViewPanner::ZoomStyle)EDITOR_GET("editors/panning/zoom_style").operator int());
@@ -4166,7 +4171,6 @@ void CanvasItemEditor::_notification(int p_what) {
 		case NOTIFICATION_READY: {
 			_update_lock_and_group_button();
 
-			SceneTreeDock::get_singleton()->get_tree_editor()->connect("node_changed", callable_mp(this, &CanvasItemEditor::_update_lock_and_group_button));
 			ProjectSettings::get_singleton()->connect("settings_changed", callable_mp(this, &CanvasItemEditor::_project_settings_changed));
 		} break;
 
@@ -4674,7 +4678,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 		case LOCK_SELECTED: {
 			undo_redo->create_action(TTR("Lock Selected"));
 
-			List<Node *> selection = editor_selection->get_top_selected_node_list();
+			const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 			for (Node *E : selection) {
 				CanvasItem *ci = Object::cast_to<CanvasItem>(E);
 				if (!ci || !ci->is_inside_tree()) {
@@ -4693,7 +4697,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 		case UNLOCK_SELECTED: {
 			undo_redo->create_action(TTR("Unlock Selected"));
 
-			List<Node *> selection = editor_selection->get_top_selected_node_list();
+			const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 			for (Node *E : selection) {
 				CanvasItem *ci = Object::cast_to<CanvasItem>(E);
 				if (!ci || !ci->is_inside_tree()) {
@@ -4712,7 +4716,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 		case GROUP_SELECTED: {
 			undo_redo->create_action(TTR("Group Selected"));
 
-			List<Node *> selection = editor_selection->get_top_selected_node_list();
+			const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 			for (Node *E : selection) {
 				CanvasItem *ci = Object::cast_to<CanvasItem>(E);
 				if (!ci || !ci->is_inside_tree()) {
@@ -4731,7 +4735,7 @@ void CanvasItemEditor::_popup_callback(int p_op) {
 		case UNGROUP_SELECTED: {
 			undo_redo->create_action(TTR("Ungroup Selected"));
 
-			List<Node *> selection = editor_selection->get_top_selected_node_list();
+			const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 			for (Node *E : selection) {
 				CanvasItem *ci = Object::cast_to<CanvasItem>(E);
 				if (!ci || !ci->is_inside_tree()) {
@@ -6355,7 +6359,7 @@ void CanvasItemEditorViewport::drop_data(const Point2 &p_point, const Variant &p
 		return;
 	}
 
-	List<Node *> selected_nodes = EditorNode::get_singleton()->get_editor_selection()->get_top_selected_node_list();
+	const List<Node *> &selected_nodes = EditorNode::get_singleton()->get_editor_selection()->get_top_selected_node_list();
 	Node *root_node = EditorNode::get_singleton()->get_edited_scene();
 	if (selected_nodes.size() > 0) {
 		Node *selected_node = selected_nodes.front()->get();
