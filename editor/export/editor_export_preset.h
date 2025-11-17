@@ -59,6 +59,12 @@ public:
 		MODE_SCRIPT_BINARY_TOKENS_COMPRESSED,
 	};
 
+	enum ScriptEncryptionMode {
+		MODE_SCRIPT_ENCRYPTION_NONE,
+		MODE_SCRIPT_ENCRYPTION_AES256,
+		MODE_SCRIPT_ENCRYPTION_XOR,
+	};
+
 private:
 	Ref<EditorExportPlatform> platform;
 	ExportFilter export_filter = EXPORT_ALL_RESOURCES;
@@ -94,6 +100,7 @@ private:
 
 	String script_key;
 	int script_mode = MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
+	int script_encryption_mode = MODE_SCRIPT_ENCRYPTION_NONE;
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
@@ -180,6 +187,9 @@ public:
 	void set_script_export_mode(int p_mode);
 	int get_script_export_mode() const;
 
+	void set_script_encryption_mode(int p_mode);
+	int get_script_encryption_mode() const;
+
 	Variant _get_or_env(const StringName &p_name, const String &p_env_var) const {
 		return get_or_env(p_name, p_env_var);
 	}
@@ -199,3 +209,4 @@ public:
 VARIANT_ENUM_CAST(EditorExportPreset::ExportFilter);
 VARIANT_ENUM_CAST(EditorExportPreset::FileExportMode);
 VARIANT_ENUM_CAST(EditorExportPreset::ScriptExportMode);
+VARIANT_ENUM_CAST(EditorExportPreset::ScriptEncryptionMode);

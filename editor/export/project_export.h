@@ -119,6 +119,8 @@ class ProjectExportDialog : public ConfirmationDialog {
 	LineEdit *script_key = nullptr;
 	Button *show_script_key = nullptr;
 	Label *script_key_error = nullptr;
+	MarginContainer *script_key_label_container = nullptr;
+	VBoxContainer *script_key_container = nullptr;
 
 	ProjectExportTextureFormatError *export_texture_format_error = nullptr;
 	Label *export_error = nullptr;
@@ -177,6 +179,7 @@ class ProjectExportDialog : public ConfirmationDialog {
 	LineEdit *seed_input = nullptr;
 
 	OptionButton *script_mode = nullptr;
+	OptionButton *script_encryption_mode = nullptr;
 
 	void _open_export_template_manager();
 
@@ -202,9 +205,10 @@ class ProjectExportDialog : public ConfirmationDialog {
 	void _seed_input_changed(const String &p_text);
 	void _script_encryption_key_changed(const String &p_key);
 	void _script_encryption_key_visibility_changed(bool p_visible);
-	bool _validate_script_encryption_key(const String &p_key);
+	bool _validate_script_encryption_key(const String &p_key, int p_encryption_mode = EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256);
 
 	void _script_export_mode_changed(int p_mode);
+	void _script_encryption_mode_changed(int p_mode);
 
 	void _open_key_help_link();
 

@@ -3166,3 +3166,13 @@ void ResourceFormatSaverGDScript::get_recognized_extensions(const Ref<Resource> 
 bool ResourceFormatSaverGDScript::recognize(const Ref<Resource> &p_resource) const {
 	return Object::cast_to<GDScript>(*p_resource) != nullptr;
 }
+
+/* SCRIPT ENCRYPTION FUNCTIONS */
+
+void GDScriptLanguage::set_script_encryption_key(const String &p_key) {
+	GDScriptCache::set_script_encryption_key(p_key);
+}
+
+String GDScriptLanguage::get_script_encryption_key() {
+	return GDScriptCache::get_script_encryption_key();
+}

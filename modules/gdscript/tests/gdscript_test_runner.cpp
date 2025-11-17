@@ -45,6 +45,7 @@
 #include "scene/resources/packed_scene.h"
 
 #include "tests/test_macros.h"
+#include "test_gdscript_encryption.h"
 
 namespace GDScriptTests {
 

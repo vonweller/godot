@@ -396,8 +396,6 @@ void ProjectExportDialog::_edit_preset(int p_index) {
 	enc_directory->set_disabled(!enc_pck_mode);
 	enc_in_filters->set_editable(enc_pck_mode);
 	enc_ex_filters->set_editable(enc_pck_mode);
-	script_key->set_editable(enc_pck_mode);
-	show_script_key->set_disabled(!enc_pck_mode);
 	seed_input->set_editable(enc_pck_mode);
 
 	bool enc_directory_mode = current->get_enc_directory();
@@ -407,22 +405,56 @@ void ProjectExportDialog::_edit_preset(int p_index) {
 	if (!updating_script_key) {
 		script_key->set_text(key);
 	}
-	if (enc_pck_mode) {
-		script_key->set_editable(true);
-
-		bool key_valid = _validate_script_encryption_key(key);
+	
+	// Show/hide script key container based on encryption mode
+	int encryption_mode = current->get_script_encryption_mode();
+	bool show_key_input = (encryption_mode != EditorExportPreset::MODE_SCRIPT_ENCRYPTION_NONE);
+	script_key_container->set_visible(show_key_input);
+	
+	// Update the label text based on encryption mode
+	if (show_key_input && script_key_label_container) {
+		Label *label = Object::cast_to<Label>(script_key_label_container->get_child(0));
+		if (label) {
+			switch (encryption_mode) {
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+					label->set_text(TTRC("Encryption Key (256-bits as hexadecimal):"));
+					break;
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+					label->set_text(TTRC("Encryption Key (as hexadecimal):"));
+					break;
+				default:
+					break;
+			}
+		}
+	}
+	
+	// Validate key if encryption is enabled
+	if (show_key_input) {
+		bool key_valid = _validate_script_encryption_key(key, encryption_mode);
 		if (key_valid) {
 			script_key_error->hide();
 		} else {
+			// Update error message based on encryption mode
+			switch (encryption_mode) {
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+					script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be 64 hexadecimal characters long)"));
+					break;
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+					script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be a valid hexadecimal string)"));
+					break;
+				default:
+					break;
+			}
 			script_key_error->show();
 		}
 	} else {
-		script_key->set_editable(false);
 		script_key_error->hide();
 	}
 
 	int script_export_mode = current->get_script_export_mode();
 	script_mode->select(script_export_mode);
+
+	script_encryption_mode->select(encryption_mode);
 
 	updating = false;
 }
@@ -601,11 +633,7 @@ void ProjectExportDialog::_enc_pck_changed(bool p_pressed) {
 	enc_directory->set_disabled(!p_pressed);
 	enc_in_filters->set_editable(p_pressed);
 	enc_ex_filters->set_editable(p_pressed);
-	script_key->set_editable(p_pressed);
-	show_script_key->set_disabled(!p_pressed);
-	if (!p_pressed) {
-		show_script_key->set_pressed(false);
-	}
+	seed_input->set_editable(p_pressed);
 
 	_update_current_preset();
 }
@@ -648,6 +676,27 @@ void ProjectExportDialog::_script_encryption_key_changed(const String &p_key) {
 
 	current->set_script_encryption_key(p_key);
 
+	// Validate the key based on current encryption mode
+	int encryption_mode = current->get_script_encryption_mode();
+	bool key_valid = _validate_script_encryption_key(p_key, encryption_mode);
+	
+	if (key_valid) {
+		script_key_error->hide();
+	} else {
+		// Update error message based on encryption mode
+		switch (encryption_mode) {
+			case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+				script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be 64 hexadecimal characters long)"));
+				break;
+			case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+				script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be a valid hexadecimal string)"));
+				break;
+			default:
+				break;
+		}
+		script_key_error->show();
+	}
+
 	updating_script_key = true;
 	_update_current_preset();
 	updating_script_key = false;
@@ -659,11 +708,24 @@ void ProjectExportDialog::_script_encryption_key_visibility_changed(bool p_visib
 	script_key->set_secret(!p_visible);
 }
 
-bool ProjectExportDialog::_validate_script_encryption_key(const String &p_key) {
+bool ProjectExportDialog::_validate_script_encryption_key(const String &p_key, int p_encryption_mode) {
 	bool is_valid = false;
 
-	if (!p_key.is_empty() && p_key.is_valid_hex_number(false) && p_key.length() == 64) {
-		is_valid = true;
+	if (!p_key.is_empty() && p_key.is_valid_hex_number(false)) {
+		switch (p_encryption_mode) {
+			case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+				// AES-256 requires exactly 64 hex characters (256 bits)
+				is_valid = (p_key.length() == 64);
+				break;
+			case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+				// XOR encryption accepts any valid hexadecimal string
+				is_valid = true;
+				break;
+			default:
+				// Default to AES-256 validation for backward compatibility
+				is_valid = (p_key.length() == 64);
+				break;
+		}
 	}
 	return is_valid;
 }
@@ -677,6 +739,64 @@ void ProjectExportDialog::_script_export_mode_changed(int p_mode) {
 	ERR_FAIL_COND(current.is_null());
 
 	current->set_script_export_mode(p_mode);
+
+	_update_current_preset();
+}
+
+void ProjectExportDialog::_script_encryption_mode_changed(int p_mode) {
+	if (updating) {
+		return;
+	}
+
+	Ref<EditorExportPreset> current = get_current_preset();
+	ERR_FAIL_COND(current.is_null());
+
+	current->set_script_encryption_mode(p_mode);
+	
+	// Show/hide script key container based on encryption mode
+	bool show_key_input = (p_mode != EditorExportPreset::MODE_SCRIPT_ENCRYPTION_NONE);
+	script_key_container->set_visible(show_key_input);
+	
+	// Update the label text based on encryption mode
+	if (show_key_input && script_key_label_container) {
+		Label *label = Object::cast_to<Label>(script_key_label_container->get_child(0));
+		if (label) {
+			switch (p_mode) {
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+					label->set_text(TTRC("Encryption Key (256-bits as hexadecimal):"));
+					break;
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+					label->set_text(TTRC("Encryption Key (as hexadecimal):"));
+					break;
+				default:
+					break;
+			}
+		}
+	}
+	
+	// Validate key if encryption is enabled
+	if (show_key_input) {
+		String key = current->get_script_encryption_key();
+		bool key_valid = _validate_script_encryption_key(key, p_mode);
+		if (key_valid) {
+			script_key_error->hide();
+		} else {
+			// Update error message based on encryption mode
+			switch (p_mode) {
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256:
+					script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be 64 hexadecimal characters long)"));
+					break;
+				case EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR:
+					script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be a valid hexadecimal string)"));
+					break;
+				default:
+					break;
+			}
+			script_key_error->show();
+		}
+	} else {
+		script_key_error->hide();
+	}
 
 	_update_current_preset();
 }
@@ -1715,6 +1835,45 @@ ProjectExportDialog::ProjectExportDialog() {
 			TTR("Filters to exclude files/folders\n(comma-separated, e.g: *.ctex, *.import, music/*)"),
 			enc_ex_filters);
 
+	seed_input = memnew(LineEdit);
+	seed_input->set_accessibility_name(TTRC("Initialization vector seed"));
+	seed_input->connect(SceneStringName(text_changed), callable_mp(this, &ProjectExportDialog::_seed_input_changed));
+	sec_vb->add_margin_child(TTR("Initialization vector seed"), seed_input);
+
+	Label *sec_info = memnew(Label);
+	sec_info->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
+	sec_info->set_text(TTR("Note: Encryption key needs to be stored in the binary,\nyou need to build the export templates from source."));
+	sec_vb->add_child(sec_info);
+
+	LinkButton *sec_more_info = memnew(LinkButton);
+	sec_more_info->set_text(TTR("More Info..."));
+	sec_more_info->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_open_key_help_link));
+	sec_vb->add_child(sec_more_info);
+
+	sections->add_child(sec_scroll_container);
+
+	// Script export parameters.
+
+	VBoxContainer *script_vb = memnew(VBoxContainer);
+	script_vb->set_name(TTR("Scripts"));
+
+	script_mode = memnew(OptionButton);
+	script_mode->set_accessibility_name(TTRC("GDScript Export Mode:"));
+	script_vb->add_margin_child(TTR("GDScript Export Mode:"), script_mode);
+	script_mode->add_item(TTR("Text (easier debugging)"), (int)EditorExportPreset::MODE_SCRIPT_TEXT);
+	script_mode->add_item(TTR("Binary tokens (faster loading)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS);
+	script_mode->add_item(TTR("Compressed binary tokens (smaller files)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED);
+	script_mode->connect(SceneStringName(item_selected), callable_mp(this, &ProjectExportDialog::_script_export_mode_changed));
+
+	script_encryption_mode = memnew(OptionButton);
+	script_encryption_mode->set_accessibility_name(TTRC("Script Encryption Mode:"));
+	script_vb->add_margin_child(TTR("Script Encryption Mode:"), script_encryption_mode);
+	script_encryption_mode->add_item(TTR("No Encryption"), (int)EditorExportPreset::MODE_SCRIPT_ENCRYPTION_NONE);
+	script_encryption_mode->add_item(TTR("AES-256"), (int)EditorExportPreset::MODE_SCRIPT_ENCRYPTION_AES256);
+	script_encryption_mode->add_item(TTR("XOR"), (int)EditorExportPreset::MODE_SCRIPT_ENCRYPTION_XOR);
+	script_encryption_mode->connect(SceneStringName(item_selected), callable_mp(this, &ProjectExportDialog::_script_encryption_mode_changed));
+
+	// Script encryption key input - moved from Encryption tab
 	script_key = memnew(LineEdit);
 	script_key->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	script_key->set_accessibility_name(TTRC("Encryption Key (256-bits as hexadecimal):"));
@@ -1731,39 +1890,13 @@ ProjectExportDialog::ProjectExportDialog() {
 
 	script_key_error = memnew(Label);
 	script_key_error->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
-	script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be 64 hexadecimal characters long)"));
+	script_key_error->set_text(String::utf8("•  ") + TTR("Invalid Encryption Key (must be a valid hexadecimal string)"));
 	script_key_error->add_theme_color_override(SceneStringName(font_color), EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("error_color"), EditorStringName(Editor)));
-	sec_vb->add_margin_child(TTRC("Encryption Key (256-bits as hexadecimal):"), encryption_hb);
-	sec_vb->add_child(script_key_error);
-	sections->add_child(sec_scroll_container);
-
-	seed_input = memnew(LineEdit);
-	seed_input->set_accessibility_name(TTRC("Initialization vector seed"));
-	seed_input->connect(SceneStringName(text_changed), callable_mp(this, &ProjectExportDialog::_seed_input_changed));
-	sec_vb->add_margin_child(TTR("Initialization vector seed"), seed_input);
-
-	Label *sec_info = memnew(Label);
-	sec_info->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
-	sec_info->set_text(TTR("Note: Encryption key needs to be stored in the binary,\nyou need to build the export templates from source."));
-	sec_vb->add_child(sec_info);
-
-	LinkButton *sec_more_info = memnew(LinkButton);
-	sec_more_info->set_text(TTR("More Info..."));
-	sec_more_info->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_open_key_help_link));
-	sec_vb->add_child(sec_more_info);
-
-	// Script export parameters.
-
-	VBoxContainer *script_vb = memnew(VBoxContainer);
-	script_vb->set_name(TTR("Scripts"));
-
-	script_mode = memnew(OptionButton);
-	script_mode->set_accessibility_name(TTRC("GDScript Export Mode:"));
-	script_vb->add_margin_child(TTR("GDScript Export Mode:"), script_mode);
-	script_mode->add_item(TTR("Text (easier debugging)"), (int)EditorExportPreset::MODE_SCRIPT_TEXT);
-	script_mode->add_item(TTR("Binary tokens (faster loading)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS);
-	script_mode->add_item(TTR("Compressed binary tokens (smaller files)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED);
-	script_mode->connect(SceneStringName(item_selected), callable_mp(this, &ProjectExportDialog::_script_export_mode_changed));
+	
+	script_key_container = memnew(VBoxContainer);
+	script_key_label_container = script_key_container->add_margin_child(TTRC("Encryption Key:"), encryption_hb);
+	script_key_container->add_child(script_key_error);
+	script_vb->add_child(script_key_container);
 
 	sections->add_child(script_vb);
 
@@ -1777,6 +1910,7 @@ ProjectExportDialog::ProjectExportDialog() {
 	duplicate_preset->set_disabled(true);
 	delete_preset->set_disabled(true);
 	script_key_error->hide();
+	script_key_container->hide(); // Initially hide the script key container
 	sections->hide();
 	parameters->edit(nullptr);
 

@@ -504,6 +504,21 @@ struct GDScriptUtilityFunctionsDefinitions {
 		r_error.argument = 1;
 		r_error.expected = Variant::NIL;
 	}
+
+	static inline void set_script_encryption_key(Variant *r_ret, const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
+		DEBUG_VALIDATE_ARG_COUNT(1, 1);
+		DEBUG_VALIDATE_ARG_TYPE(0, Variant::STRING);
+
+		String key = *p_args[0];
+		GDScriptLanguage::set_script_encryption_key(key);
+		*r_ret = Variant();
+	}
+
+	static inline void get_script_encryption_key(Variant *r_ret, const Variant **p_args, int p_arg_count, Callable::CallError &r_error) {
+		DEBUG_VALIDATE_ARG_COUNT(0, 0);
+
+		*r_ret = GDScriptLanguage::get_script_encryption_key();
+	}
 };
 
 struct GDScriptUtilityFunctionInfo {
@@ -588,6 +603,8 @@ void GDScriptUtilityFunctions::register_functions() {
 	REGISTER_FUNC( get_stack,      false, RET(ARRAY),         NOARGS,                                  false, varray(     ));
 	REGISTER_FUNC( len,            true,  RET(INT),           ARGS( ARGVAR("var")                   ), false, varray(     ));
 	REGISTER_FUNC( is_instance_of, true,  RET(BOOL),          ARGS( ARGVAR("value"), ARGVAR("type") ), false, varray(     ));
+	REGISTER_FUNC( set_script_encryption_key, false, RET(NIL), ARGS( ARG("key", STRING)              ), false, varray(     ));
+	REGISTER_FUNC( get_script_encryption_key, true,  RET(STRING), NOARGS,                             false, varray(     ));
 	/* clang-format on */
 }
 

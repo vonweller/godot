@@ -36,7 +36,15 @@
 #include "gdscript_parser.h"
 
 #include "core/io/file_access.h"
+#include "core/io/file_access_encrypted.h"
+#include "core/io/dir_access.h"
+#include "core/io/marshalls.h"
+#include "core/os/os.h"
+#include "core/config/project_settings.h"
 #include "core/templates/vector.h"
+
+// Global script encryption key for runtime decryption
+static uint8_t script_encryption_key[32] = { 0 };
 
 GDScriptParserRef::Status GDScriptParserRef::get_status() const {
 	return status;
@@ -292,6 +300,151 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 	uint64_t read = f->get_buffer(buffer.ptrw(), buffer.size());
 	ERR_FAIL_COND_V_MSG(read != len, Vector<uint8_t>(), "Failed to read binary GDScript file '" + p_path + "'.");
 
+	// Check if the file is encrypted
+	if (buffer.size() >= 4 && buffer[0] == 'G' && buffer[1] == 'D' && buffer[2] == 'S' && buffer[3] == 'E') {
+		// This is an encrypted GDScript file
+		// Try to decrypt it using the global script encryption key
+		Vector<uint8_t> decrypted_buffer;
+		
+		// Check if we have a valid encryption key
+		bool has_key = false;
+		for (int i = 0; i < 32; i++) {
+			if (script_encryption_key[i] != 0) {
+				has_key = true;
+				break;
+			}
+		}
+		
+		if (has_key) {
+			// First try AES256 decryption
+		// Create a temporary file to store the encrypted data
+		String temp_path = OS::get_singleton()->get_cache_path().path_join("temp_gdc_" + itos(OS::get_singleton()->get_unix_time()));
+		Ref<FileAccess> temp_file = FileAccess::open(temp_path, FileAccess::WRITE);
+		if (temp_file.is_valid()) {
+			// Write the encrypted data to the temp file (skip the 'GDSE' header)
+			temp_file->store_buffer(buffer.ptr() + 4, buffer.size() - 4);
+			temp_file->close();
+			
+			// Try to decrypt the file with AES256
+			Ref<FileAccessEncrypted> fae;
+			fae.instantiate();
+			Vector<uint8_t> key;
+			key.resize(32);
+			for (int i = 0; i < 32; i++) {
+				key.write[i] = script_encryption_key[i];
+			}
+			
+			Ref<FileAccess> f_temp = FileAccess::open(temp_path, FileAccess::READ);
+			if (f_temp.is_valid()) {
+				err = fae->open_and_parse(f_temp, key, FileAccessEncrypted::MODE_READ, false);
+				if (err == OK) {
+					decrypted_buffer.resize(fae->get_length());
+					fae->get_buffer(decrypted_buffer.ptrw(), decrypted_buffer.size());
+					
+					// Verify integrity using a simple checksum
+					if (decrypted_buffer.size() >= 8) {
+						// The last 4 bytes should contain a checksum of the data
+						uint32_t expected_checksum = decode_uint32(&decrypted_buffer[decrypted_buffer.size() - 4]);
+						
+						// Calculate checksum of all data except the checksum itself
+						uint32_t calculated_checksum = hash_djb2_buffer(decrypted_buffer.ptr(), decrypted_buffer.size() - 4);
+						
+						if (expected_checksum == calculated_checksum) {
+							// Remove the checksum from the buffer
+							decrypted_buffer.resize(decrypted_buffer.size() - 4);
+							
+							// Replace the 'GDSE' header with 'GDSC' to make it compatible with the standard tokenizer
+							if (decrypted_buffer.size() >= 4) {
+								decrypted_buffer.write[0] = 'G';
+								decrypted_buffer.write[1] = 'D';
+								decrypted_buffer.write[2] = 'S';
+								decrypted_buffer.write[3] = 'C';
+							}
+							
+							buffer = decrypted_buffer;
+						} else {
+							// Checksum doesn't match, try XOR decryption
+							decrypted_buffer.clear();
+						}
+					} else {
+						// Buffer too small, try XOR decryption
+						decrypted_buffer.clear();
+					}
+				}
+				f_temp->close();
+			}
+			
+			// Clean up the temporary file
+			Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+			da->remove(temp_path);
+		}
+			
+			// If AES256 decryption failed, try XOR decryption
+			if (decrypted_buffer.is_empty()) {
+				// Get the key as a string for XOR decryption
+				String key_str;
+				for (int i = 0; i < 32; i++) {
+					if (script_encryption_key[i] == 0) {
+						break;
+					}
+					key_str += (char)script_encryption_key[i];
+				}
+				
+				// Skip the 'GDSE' header and decrypt the rest with XOR
+				const uint8_t *src = buffer.ptr() + 4;
+				int data_len = buffer.size() - 4;
+				
+				decrypted_buffer.resize(data_len);
+				uint8_t *dst = decrypted_buffer.ptrw();
+				
+				if (key_str.is_empty()) {
+					// Use default XOR key if none provided
+					for (int i = 0; i < data_len; i++) {
+						dst[i] = src[i] ^ 0xb6;
+					}
+				} else {
+					// Use provided key for XOR
+					int key_len = key_str.length();
+					for (int i = 0; i < data_len; i++) {
+						dst[i] = src[i] ^ key_str[i % key_len];
+					}
+				}
+				
+				// Verify integrity using a simple checksum
+				if (decrypted_buffer.size() >= 8) {
+					// The last 4 bytes should contain a checksum of the data
+					uint32_t expected_checksum = decode_uint32(&decrypted_buffer[decrypted_buffer.size() - 4]);
+					
+					// Calculate checksum of all data except the checksum itself
+					uint32_t calculated_checksum = hash_djb2_buffer(decrypted_buffer.ptr(), decrypted_buffer.size() - 4);
+					
+					if (expected_checksum == calculated_checksum) {
+						// Remove the checksum from the buffer
+						decrypted_buffer.resize(decrypted_buffer.size() - 4);
+						
+						// Replace the 'GDSE' header with 'GDSC' to make it compatible with the standard tokenizer
+						if (decrypted_buffer.size() >= 4) {
+							decrypted_buffer.write[0] = 'G';
+							decrypted_buffer.write[1] = 'D';
+							decrypted_buffer.write[2] = 'S';
+							decrypted_buffer.write[3] = 'C';
+						}
+						
+						buffer = decrypted_buffer;
+					} else {
+						ERR_FAIL_V_MSG(Vector<uint8_t>(), "GDScript file '" + p_path + "' appears to be corrupted or tampered with.");
+					}
+				} else {
+					ERR_FAIL_V_MSG(Vector<uint8_t>(), "GDScript file '" + p_path + "' is too small to contain valid encrypted data.");
+				}
+			}
+		}
+		
+		if (decrypted_buffer.is_empty() && has_key) {
+			ERR_FAIL_V_MSG(Vector<uint8_t>(), "Failed to decrypt GDScript file '" + p_path + "'. Invalid encryption key or corrupted data.");
+		}
+	}
+
 	return buffer;
 }
 
@@ -497,4 +650,29 @@ GDScriptCache::~GDScriptCache() {
 		clear();
 	}
 	singleton = nullptr;
+}
+
+void GDScriptCache::set_script_encryption_key(const String &p_key) {
+	// Clear the current key first
+	for (int i = 0; i < 32; i++) {
+		script_encryption_key[i] = 0;
+	}
+	
+	// Set the new key
+	int key_len = p_key.length();
+	for (int i = 0; i < MIN(32, key_len); i++) {
+		script_encryption_key[i] = p_key[i];
+	}
+}
+
+String GDScriptCache::get_script_encryption_key() {
+	// Convert the key back to a string, stopping at the first null byte
+	String key;
+	for (int i = 0; i < 32; i++) {
+		if (script_encryption_key[i] == 0) {
+			break;
+		}
+		key += (char)script_encryption_key[i];
+	}
+	return key;
 }

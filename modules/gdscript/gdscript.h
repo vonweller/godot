@@ -661,6 +661,14 @@ public:
 	virtual bool handles_global_class_type(const String &p_type) const override;
 	virtual String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr, bool *r_is_abstract = nullptr, bool *r_is_tool = nullptr) const override;
 
+	/* SCRIPT ENCRYPTION FUNCTIONS */
+	
+	// Set the script encryption key for runtime decryption
+	static void set_script_encryption_key(const String &p_key);
+	
+	// Get the current script encryption key
+	static String get_script_encryption_key();
+
 	void add_orphan_subclass(const String &p_qualified_name, const ObjectID &p_subclass);
 	Ref<GDScript> get_orphan_subclass(const String &p_qualified_name);
 

@@ -118,6 +118,10 @@ public:
 	static void add_static_script(Ref<GDScript> p_script);
 	static void remove_static_script(const String &p_fqcn);
 
+	// Script encryption key functions
+	static void set_script_encryption_key(const String &p_key);
+	static String get_script_encryption_key();
+
 	static void clear();
 
 	GDScriptCache();
