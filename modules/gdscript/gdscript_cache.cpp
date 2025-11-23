@@ -34,6 +34,7 @@
 #include "gdscript_analyzer.h"
 #include "gdscript_compiler.h"
 #include "gdscript_parser.h"
+#include "gdscript_tokenizer_buffer.h"
 
 #include "core/io/file_access.h"
 #include "core/templates/vector.h"
@@ -291,6 +292,11 @@ Vector<uint8_t> GDScriptCache::get_binary_tokens(const String &p_path) {
 	buffer.resize(len);
 	uint64_t read = f->get_buffer(buffer.ptrw(), buffer.size());
 	ERR_FAIL_COND_V_MSG(read != len, Vector<uint8_t>(), "Failed to read binary GDScript file '" + p_path + "'.");
+
+	if (buffer.size() >= 4 && buffer[0] == 'G' && buffer[1] == 'D' && buffer[2] == 'S' && buffer[3] == 'X') {
+		buffer = buffer.slice(4);
+		GDScriptTokenizerBuffer::process_xor_encryption(buffer, GDScriptTokenizerBuffer::DEFAULT_ENC_KEY);
+	}
 
 	return buffer;
 }

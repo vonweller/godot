@@ -33,6 +33,23 @@
 #include "core/io/compression.h"
 #include "core/io/marshalls.h"
 
+const char *GDScriptTokenizerBuffer::DEFAULT_ENC_KEY = "godot";
+
+void GDScriptTokenizerBuffer::process_xor_encryption(Vector<uint8_t> &p_buffer, const String &p_key) {
+	const CharString key_utf8 = p_key.utf8();
+	const int key_len = key_utf8.length();
+	if (key_len == 0) {
+		return;
+	}
+
+	uint8_t *buf = p_buffer.ptrw();
+	int size = p_buffer.size();
+
+	for (int i = 0; i < size; i++) {
+		buf[i] ^= key_utf8[i % key_len];
+	}
+}
+
 int GDScriptTokenizerBuffer::_token_to_binary(const Token &p_token, Vector<uint8_t> &r_buffer, int p_start, HashMap<StringName, uint32_t> &r_identifiers_map, HashMap<Variant, uint32_t> &r_constants_map) {
 	int pos = p_start;
 

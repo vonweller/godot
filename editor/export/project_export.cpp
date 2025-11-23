@@ -424,6 +424,9 @@ void ProjectExportDialog::_edit_preset(int p_index) {
 	int script_export_mode = current->get_script_export_mode();
 	script_mode->select(script_export_mode);
 
+	String gdscript_key = current->get("gdscript/encryption_key");
+	gdscript_encryption_key->set_text(gdscript_key);
+
 	updating = false;
 }
 
@@ -702,6 +705,17 @@ void ProjectExportDialog::_script_export_mode_changed(int p_mode) {
 	current->set_script_export_mode(p_mode);
 
 	_update_current_preset();
+}
+
+void ProjectExportDialog::_gdscript_encryption_key_changed(const String &p_key) {
+	if (updating) {
+		return;
+	}
+
+	Ref<EditorExportPreset> current = get_current_preset();
+	ERR_FAIL_COND(current.is_null());
+
+	current->set("gdscript/encryption_key", p_key);
 }
 
 void ProjectExportDialog::_duplicate_preset() {
@@ -1788,6 +1802,12 @@ ProjectExportDialog::ProjectExportDialog() {
 	script_mode->add_item(TTR("Binary tokens (faster loading)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS);
 	script_mode->add_item(TTR("Compressed binary tokens (smaller files)"), (int)EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED);
 	script_mode->connect(SceneStringName(item_selected), callable_mp(this, &ProjectExportDialog::_script_export_mode_changed));
+	
+	gdscript_encryption_key = memnew(LineEdit);
+	gdscript_encryption_key->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	gdscript_encryption_key->set_accessibility_name(TTRC("GDScript Encryption Key:"));
+	gdscript_encryption_key->connect(SceneStringName(text_changed), callable_mp(this, &ProjectExportDialog::_gdscript_encryption_key_changed));
+	script_vb->add_margin_child(TTR("GDScript Encryption Key:"), gdscript_encryption_key);
 
 	sections->add_child(script_vb);
 
