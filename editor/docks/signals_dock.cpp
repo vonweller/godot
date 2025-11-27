@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  HybridAppUtils.kt                                                     */
+/*  signals_dock.cpp                                                      */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,52 +28,35 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-/**
- * Contains utility methods and constants for hybrid apps.
- */
-@file:JvmName("HybridAppUtils")
+#include "signals_dock.h"
 
-package org.godotengine.godot.xr
+#include "editor/scene/connections_dialog.h"
+#include "editor/settings/editor_command_palette.h"
+#include "editor/themes/editor_scale.h"
 
-import android.util.Log
-import org.godotengine.godot.GodotLib
-
-private const val TAG = "HybridAppUtils"
-
-enum class HybridMode(private val nativeValue: Int) {
-	NONE( -1),
-	IMMERSIVE(0),
-	PANEL(1);
-
-	companion object {
-		fun fromNative(nativeValue: Int): HybridMode {
-			for (mode in HybridMode.entries) {
-				if (mode.nativeValue == nativeValue) {
-					return mode
-				}
-			}
-			return NONE
-		}
-	}
+void SignalsDock::update_lists() {
+	connections->update_tree();
 }
 
-const val HYBRID_APP_FEATURE = "godot_openxr_hybrid_app"
-const val HYBRID_APP_PANEL_FEATURE = "godot_openxr_panel_app"
-const val HYBRID_APP_PANEL_CATEGORY = "org.godotengine.xr.hybrid.PANEL"
-const val HYBRID_APP_IMMERSIVE_CATEGORY = "org.godotengine.xr.hybrid.IMMERSIVE"
+void SignalsDock::set_object(Object *p_object) {
+	connections->set_object(p_object);
+}
 
-fun isHybridAppEnabled() = GodotLib.getGlobal("xr/hybrid_app/enabled").toBoolean()
+SignalsDock::SignalsDock() {
+	singleton = this;
+	set_name(TTRC("Signals"));
+	set_icon_name("Signals");
+	set_dock_shortcut(ED_SHORTCUT_AND_COMMAND("docks/open_signals", TTRC("Open Signals Dock")));
+	set_default_slot(DockConstants::DOCK_SLOT_RIGHT_UL);
 
-fun getHybridAppLaunchMode(): HybridMode {
-	if (!isHybridAppEnabled()) {
-		return HybridMode.NONE
-	}
+	VBoxContainer *main_vb = memnew(VBoxContainer);
+	add_child(main_vb);
 
-	try {
-		val launchModeValue = GodotLib.getGlobal("xr/hybrid_app/launch_mode").toInt()
-		return HybridMode.fromNative(launchModeValue)
-	} catch (e: Exception) {
-		Log.w(TAG, "Unable to retrieve 'xr/hybrid_app/launch_mode' project setting", e)
-		return HybridMode.NONE
-	}
+	connections = memnew(ConnectionsDock);
+	main_vb->add_child(connections);
+	connections->set_v_size_flags(SIZE_EXPAND_FILL);
+}
+
+SignalsDock::~SignalsDock() {
+	singleton = nullptr;
 }

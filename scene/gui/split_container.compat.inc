@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  DeviceUtils.kt                                                        */
+/*  split_container.compat.inc                                            */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,33 +28,14 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-/**
- * Contains utility methods for detecting specific devices.
- */
-@file:JvmName("DeviceUtils")
+#ifndef DISABLE_DEPRECATED
 
-package org.godotengine.godot.utils
-
-import android.content.Context
-import android.os.Build
-
-/**
- * Returns true if running on Meta Horizon OS.
- */
-fun isHorizonOSDevice(context: Context): Boolean {
-	return context.packageManager.hasSystemFeature("oculus.hardware.standalone_vr")
+void SplitContainer::_clamp_split_offset_compat_90411() {
+	clamp_split_offset(0);
 }
 
-/**
- * Returns true if running on PICO OS.
- */
-fun isPicoOSDevice(): Boolean {
-	return ("Pico".equals(Build.BRAND, true))
+void SplitContainer::_bind_compatibility_methods() {
+	ClassDB::bind_compatibility_method(D_METHOD("clamp_split_offset"), &SplitContainer::_clamp_split_offset_compat_90411);
 }
 
-/**
- * Returns true if running on a native Android XR device.
- */
-fun isNativeXRDevice(context: Context): Boolean {
-	return isHorizonOSDevice(context) || isPicoOSDevice()
-}
+#endif

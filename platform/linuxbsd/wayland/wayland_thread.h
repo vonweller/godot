@@ -45,6 +45,7 @@
 #ifdef GLES3_ENABLED
 #include <wayland-egl-core.h>
 #endif
+#include <xkbcommon/xkbcommon-compose.h>
 #include <xkbcommon/xkbcommon.h>
 #endif // SOWRAP_ENABLED
 
@@ -469,6 +470,8 @@ public:
 		struct xkb_context *xkb_context = nullptr;
 		struct xkb_keymap *xkb_keymap = nullptr;
 		struct xkb_state *xkb_state = nullptr;
+		struct xkb_compose_state *xkb_compose_state = nullptr;
+		struct xkb_compose_table *xkb_compose_table = nullptr;
 
 		const char *keymap_buffer = nullptr;
 		uint32_t keymap_buffer_size = 0;
