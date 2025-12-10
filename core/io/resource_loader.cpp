@@ -666,6 +666,14 @@ Ref<ResourceLoader::LoadToken> ResourceLoader::_load_start(const String &p_path,
 float ResourceLoader::_dependency_get_progress(const String &p_path) {
 	if (thread_load_tasks.has(p_path)) {
 		ThreadLoadTask &load_task = thread_load_tasks[p_path];
+		if (load_task.in_progress_check) {
+			// Given the fact that any resource loaded when an outer stack frame is
+			// loading another one is considered a dependency of it, for progress
+			// tracking purposes, a cycle can happen if even if the original resource
+			// graphs involved have none. For instance, preload() can cause this.
+			return load_task.max_reported_progress;
+		}
+		load_task.in_progress_check = true;
 		float current_progress = 0.0;
 		int dep_count = load_task.sub_tasks.size();
 		if (dep_count > 0) {
@@ -679,6 +687,7 @@ float ResourceLoader::_dependency_get_progress(const String &p_path) {
 			current_progress = load_task.progress;
 		}
 		load_task.max_reported_progress = MAX(load_task.max_reported_progress, current_progress);
+		load_task.in_progress_check = false;
 		return load_task.max_reported_progress;
 	} else {
 		return 1.0; //assume finished loading it so it no longer exists
@@ -1175,7 +1184,10 @@ String ResourceLoader::get_resource_script_class(const String &p_path) {
 }
 
 ResourceUID::ID ResourceLoader::get_resource_uid(const String &p_path) {
-	String local_path = _validate_local_path(p_path);
+	const String local_path = _validate_local_path(p_path);
+	if (!Engine::get_singleton()->is_editor_hint()) {
+		return ResourceUID::get_singleton()->get_path_id(local_path);
+	}
 
 	for (int i = 0; i < loader_count; i++) {
 		ResourceUID::ID id = loader[i]->get_resource_uid(local_path);

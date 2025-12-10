@@ -484,10 +484,13 @@ void FileSystemDock::_update_display_mode(bool p_force) {
 	// Compute the new display mode.
 	if (p_force || old_display_mode != display_mode) {
 		switch (display_mode) {
-			case DISPLAY_MODE_TREE_ONLY:
+			case DISPLAY_MODE_TREE_ONLY: {
 				button_toggle_display_mode->set_button_icon(get_editor_theme_icon(SNAME("Panels1")));
 				tree->show();
 				tree->set_v_size_flags(SIZE_EXPAND_FILL);
+				tree->set_scroll_hint_mode(Tree::SCROLL_HINT_MODE_TOP);
+				tree->set_theme_type_variation("");
+				tree_mc->set_theme_type_variation("NoBorderHorizontalBottom");
 				if (horizontal) {
 					toolbar2_hbc->hide();
 				} else {
@@ -497,10 +500,10 @@ void FileSystemDock::_update_display_mode(bool p_force) {
 
 				_update_tree(get_uncollapsed_paths());
 				file_list_vb->hide();
-				break;
+			} break;
 
 			case DISPLAY_MODE_HSPLIT:
-			case DISPLAY_MODE_VSPLIT:
+			case DISPLAY_MODE_VSPLIT: {
 				const bool is_vertical = display_mode == DISPLAY_MODE_VSPLIT;
 				split_box->set_vertical(is_vertical);
 
@@ -511,15 +514,26 @@ void FileSystemDock::_update_display_mode(bool p_force) {
 
 				tree->show();
 				tree->set_v_size_flags(SIZE_EXPAND_FILL);
+				if (is_vertical) {
+					tree->set_theme_type_variation("");
+					tree->set_scroll_hint_mode(Tree::SCROLL_HINT_MODE_BOTH);
+					tree_mc->set_theme_type_variation("NoBorderHorizontal");
+				} else {
+					tree->set_theme_type_variation("TreeSecondary");
+					tree->set_scroll_hint_mode(Tree::SCROLL_HINT_MODE_DISABLED);
+					tree_mc->set_theme_type_variation("");
+				}
 				tree->ensure_cursor_is_visible();
+
 				toolbar2_hbc->hide();
 				button_file_list_display_mode->show();
 				_update_tree(get_uncollapsed_paths());
 
 				file_list_vb->show();
 				_update_file_list(true);
-				break;
+			} break;
 		}
+
 		old_display_mode = display_mode;
 	}
 }
@@ -2695,7 +2709,7 @@ int FileSystemDock::_get_menu_option_from_key(const Ref<InputEventKey> &p_key) {
 		return FILE_MENU_OPEN_EXTERNAL;
 	} else if (ED_IS_SHORTCUT("filesystem_dock/open_in_terminal", p_key)) {
 		return FILE_MENU_OPEN_IN_TERMINAL;
-	} else if (ED_IS_SHORTCUT("file_dialog/focus_path", p_key)) {
+	} else if (ED_IS_SHORTCUT("filesystem_dock/focus_path", p_key)) {
 		return EXTRA_FOCUS_PATH;
 	} else if (ED_IS_SHORTCUT("editor/open_search", p_key)) {
 		return EXTRA_FOCUS_FILTER;
@@ -4234,6 +4248,11 @@ FileSystemDock::FileSystemDock() {
 	ED_SHORTCUT("filesystem_dock/open_in_terminal", TTRC("Open in Terminal"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::ALT | Key::T);
 #endif
 
+	ED_SHORTCUT("filesystem_dock/focus_path", TTRC("Focus Path"), KeyModifierMask::CMD_OR_CTRL | Key::L);
+	// Allow both Cmd + L and Cmd + Shift + G to match Safari's and Finder's shortcuts respectively.
+	ED_SHORTCUT_OVERRIDE_ARRAY("filesystem_dock/focus_path", "macos",
+			{ int32_t(KeyModifierMask::META | Key::L), int32_t(KeyModifierMask::META | KeyModifierMask::SHIFT | Key::G) });
+
 	// Properly translating color names would require a separate HashMap, so for simplicity they are provided as comments.
 	folder_colors["red"] = Color(1.0, 0.271, 0.271); // TTR("Red")
 	folder_colors["orange"] = Color(1.0, 0.561, 0.271); // TTR("Orange")
@@ -4317,18 +4336,22 @@ FileSystemDock::FileSystemDock() {
 	split_box_offset_h = 240 * EDSCALE;
 	main_vb->add_child(split_box);
 
+	tree_mc = memnew(MarginContainer);
+	split_box->add_child(tree_mc);
+	tree_mc->set_theme_type_variation("NoBorderHorizontalBottom");
+	tree_mc->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+
 	tree = memnew(FileSystemTree);
 	tree->set_accessibility_name(TTRC("Directories"));
 	tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
-
-	tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 	tree->set_hide_root(true);
+	tree->set_scroll_hint_mode(Tree::SCROLL_HINT_MODE_TOP);
 	SET_DRAG_FORWARDING_GCD(tree, FileSystemDock);
 	tree->set_allow_rmb_select(true);
 	tree->set_select_mode(Tree::SELECT_MULTI);
 	tree->set_custom_minimum_size(Size2(40 * EDSCALE, 15 * EDSCALE));
 	tree->set_column_clip_content(0, true);
-	split_box->add_child(tree);
+	tree_mc->add_child(tree);
 
 	tree->connect("item_activated", callable_mp(this, &FileSystemDock::_tree_activate_file));
 	tree->connect("multi_selected", callable_mp(this, &FileSystemDock::_tree_multi_selected));
