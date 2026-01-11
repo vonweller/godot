@@ -610,7 +610,7 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 				if (!_validate_no_foreign()) {
 					break;
 				}
-				tree->grab_focus();
+				tree->grab_focus(!tree->has_focus(true));
 				tree->edit_selected();
 			}
 		} break;
@@ -800,7 +800,6 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 
 			EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 			undo_redo->create_action(TTR("Detach Script"), UndoRedo::MERGE_DISABLE, EditorNode::get_singleton()->get_edited_scene());
-			undo_redo->add_do_method(EditorNode::get_singleton(), "push_item", (Script *)nullptr);
 
 			for (int i = 0; i < selection.size(); i++) {
 				Node *n = Object::cast_to<Node>(selection[i]);
@@ -2627,7 +2626,7 @@ void SceneTreeDock::_script_created(Ref<Script> p_script) {
 	// Avoid changing the currently edited object.
 	Object *edited_object = InspectorDock::get_inspector_singleton()->get_edited_object();
 
-	_push_item(p_script.ptr());
+	EditorNode::get_singleton()->push_item_no_inspector(p_script.ptr());
 	_queue_update_script_button();
 
 	InspectorDock::get_inspector_singleton()->edit(edited_object);
@@ -3835,6 +3834,8 @@ void SceneTreeDock::_tree_rmb(const Vector2 &p_menu_pos) {
 
 	const List<Node *> selection = editor_selection->get_top_selected_node_list();
 	List<Node *> full_selection = editor_selection->get_full_selected_node_list(); // Above method only returns nodes with common parent.
+
+	scene_tree->get_scene_tree()->grab_focus(true);
 
 	if (selection.is_empty()) {
 		if (!profile_allow_editing) {

@@ -625,13 +625,13 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			p_theme->set_color("title_button_color", "Tree", p_config.font_color);
 			p_theme->set_color("drop_position_color", "Tree", p_config.accent_color);
 
-			int tree_v_sep = p_config.enable_touch_optimizations ? p_config.separation_margin : Math::pow(p_config.base_margin * 0.2 * EDSCALE, 3);
+			int tree_v_sep = p_config.enable_touch_optimizations ? (p_config.separation_margin * 0.9) : Math::pow(p_config.base_margin * 0.175 * EDSCALE, 3);
 			p_theme->set_constant("v_separation", "Tree", tree_v_sep);
 			p_theme->set_constant("h_separation", "Tree", (p_config.increased_margin + 2) * EDSCALE);
 			p_theme->set_constant("guide_width", "Tree", p_config.border_width);
 			p_theme->set_constant("item_margin", "Tree", MAX(3 * p_config.increased_margin * EDSCALE, 12 * EDSCALE));
-			p_theme->set_constant("inner_item_margin_top", "Tree", p_config.separation_margin);
-			p_theme->set_constant("inner_item_margin_bottom", "Tree", p_config.separation_margin);
+			p_theme->set_constant("inner_item_margin_top", "Tree", p_config.base_margin * 0.75 * EDSCALE);
+			p_theme->set_constant("inner_item_margin_bottom", "Tree", p_config.base_margin * 0.75 * EDSCALE);
 			p_theme->set_constant("inner_item_margin_left", "Tree", p_config.base_margin * EDSCALE);
 			p_theme->set_constant("inner_item_margin_right", "Tree", p_config.base_margin * EDSCALE);
 			p_theme->set_constant("button_margin", "Tree", p_config.base_margin * EDSCALE);
@@ -670,6 +670,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			p_theme->set_color("children_hl_line_color", "Tree", relationship_line_color);
 			p_theme->set_color("drop_position_color", "Tree", p_config.icon_normal_color);
 			p_theme->set_color("guide_color", "Tree", Color(1, 1, 1, 0));
+			p_theme->set_color("scroll_hint_color", "Tree", Color(0, 0, 0, p_config.dark_theme ? 1.0 : 0.5));
 
 			Ref<StyleBoxFlat> style_tree_hover = p_config.flat_button_hover->duplicate();
 			style_tree_hover->set_content_margin_all(0);
@@ -752,6 +753,7 @@ void ThemeModern::populate_standard_styles(const Ref<EditorTheme> &p_theme, Edit
 			p_theme->set_color("font_selected_color", "ItemList", p_config.font_pressed_color);
 			p_theme->set_color("font_outline_color", "ItemList", p_config.font_outline_color);
 			p_theme->set_color("guide_color", "ItemList", Color(1, 1, 1, 0));
+			p_theme->set_color("scroll_hint_color", "ItemList", Color(0, 0, 0, p_config.dark_theme ? 1.0 : 0.5));
 			p_theme->set_constant("v_separation", "ItemList", p_config.base_margin * 1.5 * EDSCALE);
 			p_theme->set_constant("h_separation", "ItemList", (p_config.increased_margin + 2) * EDSCALE);
 			p_theme->set_constant("icon_margin", "ItemList", (p_config.increased_margin + 2) * EDSCALE);
@@ -1626,6 +1628,10 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_theme->set_stylebox(SceneStringName(panel), "ScrollContainer", p_config.base_empty_style);
 		p_theme->set_stylebox("focus", "ScrollContainer", p_config.focus_style);
 
+		// Scroll hints.
+		p_theme->set_color("scroll_hint_vertical_color", "ScrollContainer", Color(0, 0, 0, p_config.dark_theme ? 1.0 : 0.5));
+		p_theme->set_color("scroll_hint_horizontal_color", "ScrollContainer", Color(0, 0, 0, p_config.dark_theme ? 1.0 : 0.5));
+
 		// This stylebox is used in 3d and 2d viewports (no borders).
 		Ref<StyleBoxFlat> style_content_panel_vp = p_config.content_panel_style->duplicate();
 		style_content_panel_vp->set_content_margin_individual(p_config.border_width * 2, p_config.base_margin * EDSCALE, p_config.border_width * 2, p_config.border_width * 2);
@@ -2376,7 +2382,7 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 	{
 		// Timeline general.
 
-		p_theme->set_constant("timeline_v_separation", "AnimationTrackEditor", 0);
+		p_theme->set_constant("timeline_v_separation", "AnimationTrackEditor", p_config.base_margin * EDSCALE);
 		p_theme->set_constant("track_v_separation", "AnimationTrackEditor", 0);
 
 		int margin = p_theme->get_stylebox(SceneStringName(panel), SNAME("PanelContainer"))->get_content_margin(SIDE_LEFT);
@@ -2446,7 +2452,7 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_theme->set_stylebox("header", "AnimationTrackEditGroup", style_animation_track_header);
 
 		Ref<StyleBoxFlat> style_animation_track_group_hover = p_config.base_style->duplicate();
-		style_animation_track_group_hover->set_bg_color(p_config.highlight_color);
+		style_animation_track_group_hover->set_bg_color(p_config.surface_high_color);
 		p_theme->set_stylebox(SceneStringName(hover), "AnimationTrackEditGroup", style_animation_track_group_hover);
 
 		p_theme->set_color("bg_color", "AnimationTrackEditGroup", p_config.surface_base_color);
@@ -2527,6 +2533,35 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 
 		p_theme->set_type_variation("EditorHelpBitContent", "RichTextLabel");
 		p_theme->set_stylebox(CoreStringName(normal), "EditorHelpBitContent", editor_help_content_style);
+	}
+
+	// EditorHelpBitTooltipTitle.
+	{
+		Ref<StyleBoxFlat> style = p_theme->get_stylebox(CoreStringName(normal), "EditorHelpBitTitle")->duplicate();
+		style->set_bg_color(style->get_bg_color().lerp(p_config.mono_color_inv, 0.25));
+		if (!p_config.dark_theme) {
+			style->set_border_width_all(Math::round(2 * EDSCALE));
+			style->set_border_color(p_config.mono_color * Color(1, 1, 1, 0.15));
+		}
+		style->set_corner_radius_all(0);
+
+		p_theme->set_type_variation("EditorHelpBitTooltipTitle", "EditorHelpBitTitle");
+		p_theme->set_stylebox(CoreStringName(normal), "EditorHelpBitTooltipTitle", style);
+	}
+
+	// EditorHelpBitTooltipContent.
+	{
+		Ref<StyleBoxFlat> style = p_theme->get_stylebox(CoreStringName(normal), "EditorHelpBitContent")->duplicate();
+		style->set_bg_color(style->get_bg_color().lerp(p_config.mono_color_inv, 0.25));
+		if (!p_config.dark_theme) {
+			style->set_border_width_all(Math::round(2 * EDSCALE));
+			style->set_border_width(SIDE_TOP, 0);
+			style->set_border_color(p_config.mono_color * Color(1, 1, 1, 0.15));
+		}
+		style->set_corner_radius_all(0);
+
+		p_theme->set_type_variation("EditorHelpBitTooltipContent", "EditorHelpBitContent");
+		p_theme->set_stylebox(CoreStringName(normal), "EditorHelpBitTooltipContent", style);
 	}
 
 	// Asset Library.
