@@ -360,7 +360,7 @@ void CanvasItemEditor::_snap_other_nodes(
 		}
 	}
 	for (int i = 0; i < p_current->get_child_count(); i++) {
-		_snap_other_nodes(p_value, p_transform_to_snap, r_current_snap, r_current_snap_target, p_snap_target, p_exceptions, p_current->get_child(i));
+		_snap_other_nodes(p_value, p_transform_to_snap, r_current_snap, r_current_snap_target, p_snap_target, List<const CanvasItem *>(p_exceptions), p_current->get_child(i));
 	}
 }
 
@@ -447,7 +447,7 @@ Point2 CanvasItemEditor::snap_point(Point2 p_target, unsigned int p_modes, unsig
 				p_target, to_snap_transform,
 				output, snap_target,
 				SNAP_TARGET_OTHER_NODE,
-				exceptions,
+				List<const CanvasItem *>(exceptions),
 				get_tree()->get_edited_scene_root());
 	}
 
@@ -4492,6 +4492,32 @@ void CanvasItemEditor::_selection_changed() {
 		temp_pivot = Vector2(Math::INF, Math::INF);
 		viewport->queue_redraw();
 	}
+
+	// Check to redraw to clear anything drawn from visible selections if no selections are visible.
+	bool has_visible = false;
+	for (const KeyValue<ObjectID, Object *> &E : editor_selection->get_selection()) {
+		CanvasItem *ci = ObjectDB::get_instance<CanvasItem>(E.key);
+		if (!ci || !ci->is_visible_in_tree()) {
+			continue;
+		}
+
+		Viewport *vp = ci->get_viewport();
+		if (vp && !vp->is_visible_subviewport()) {
+			continue;
+		}
+
+		CanvasItemEditorSelectedItem *se = editor_selection->get_node_editor_data<CanvasItemEditorSelectedItem>(ci);
+		if (se) {
+			has_visible = true;
+			break;
+		}
+	}
+	if (had_visible_selection != has_visible) {
+		if (!has_visible) {
+			viewport->queue_redraw();
+		}
+		had_visible_selection = has_visible;
+	}
 }
 
 void CanvasItemEditor::edit(CanvasItem *p_canvas_item) {
@@ -5910,7 +5936,7 @@ CanvasItemEditor::CanvasItemEditor() {
 	grid_menu->add_shortcut(ED_SHORTCUT("canvas_item_editor/toggle_grid", TTRC("Toggle Grid"), KeyModifierMask::CMD_OR_CTRL | Key::APOSTROPHE));
 	p->add_submenu_node_item(TTRC("Grid"), grid_menu);
 
-	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/show_helpers", TTRC("Show Helpers"), Key::H), SHOW_HELPERS);
+	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/show_helpers", TTRC("Show Helpers"), KeyModifierMask::SHIFT | Key::H), SHOW_HELPERS);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/show_rulers", TTRC("Show Rulers")), SHOW_RULERS);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/show_guides", TTRC("Show Guides"), Key::Y), SHOW_GUIDES);
 	p->add_check_shortcut(ED_SHORTCUT("canvas_item_editor/show_origin", TTRC("Show Origin")), SHOW_ORIGIN);
