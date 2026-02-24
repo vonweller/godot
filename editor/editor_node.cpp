@@ -256,7 +256,7 @@ void EditorNode::disambiguate_filenames(const Vector<String> p_full_paths, Vecto
 
 	// For each index set with a size > 1, we need to disambiguate.
 	for (int i = 0; i < index_sets.size(); i++) {
-		RBSet<int> iset = index_sets[i];
+		RBSet<int> iset(index_sets[i]);
 		while (iset.size() > 1) {
 			// Append the parent folder to each scene name.
 			for (const int &E : iset) {
@@ -2575,7 +2575,7 @@ void EditorNode::restart_editor(bool p_goto_project_manager) {
 void EditorNode::_save_all_scenes() {
 	scenes_to_save_as.clear(); // In case saving was canceled before.
 	for (int i = 0; i < editor_data.get_edited_scene_count(); i++) {
-		if (!_is_scene_unsaved(i)) {
+		if (!is_scene_unsaved(i)) {
 			continue;
 		}
 
@@ -2619,7 +2619,7 @@ void EditorNode::_mark_unsaved_scenes() {
 	scene_tabs->update_scene_tabs();
 }
 
-bool EditorNode::_is_scene_unsaved(int p_idx) {
+bool EditorNode::is_scene_unsaved(int p_idx) {
 	const Node *scene = editor_data.get_edited_scene_root(p_idx);
 	if (!scene) {
 		return false;
@@ -4153,7 +4153,7 @@ void EditorNode::_discard_changes(const String &p_str) {
 void EditorNode::_update_file_menu_opened() {
 	bool has_unsaved = false;
 	for (int i = 0; i < editor_data.get_edited_scene_count(); i++) {
-		if (_is_scene_unsaved(i)) {
+		if (is_scene_unsaved(i)) {
 			has_unsaved = true;
 			break;
 		}
@@ -9058,9 +9058,22 @@ EditorNode::EditorNode() {
 	const String docks_section = "docks";
 	default_layout.instantiate();
 	// Dock numbers are based on DockSlot enum value + 1.
-	default_layout->set_value(docks_section, "dock_3", "Scene,Import");
-	default_layout->set_value(docks_section, "dock_4", "FileSystem,History");
-	default_layout->set_value(docks_section, "dock_5", "Inspector,Signals,Groups");
+	{
+		const String scene_key = SceneTreeDock::get_singleton()->get_effective_layout_key();
+		const String import_key = ImportDock::get_singleton()->get_effective_layout_key();
+		default_layout->set_value(docks_section, "dock_3", vformat("%s,%s", scene_key, import_key));
+	}
+	{
+		const String filesystem_key = filesystem_dock->get_effective_layout_key();
+		const String history_key = history_dock->get_effective_layout_key();
+		default_layout->set_value(docks_section, "dock_4", vformat("%s,%s", filesystem_key, history_key));
+	}
+	{
+		const String inspector_key = InspectorDock::get_singleton()->get_effective_layout_key();
+		const String signals_key = SignalsDock::get_singleton()->get_effective_layout_key();
+		const String groups_key = GroupsDock::get_singleton()->get_effective_layout_key();
+		default_layout->set_value(docks_section, "dock_5", vformat("%s,%s,%s", inspector_key, signals_key, groups_key));
+	}
 
 	int hsplits[] = { 0, dock_hsize, -dock_hsize, 0 };
 	for (int i = 0; i < (int)std_size(hsplits); i++) {
