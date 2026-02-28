@@ -1768,8 +1768,8 @@ void SceneTreeDock::_notification(int p_what) {
 				scene_tree->set_hide_filtered_out_parents(EDITOR_GET("docks/scene_tree/hide_filtered_out_parents"), false);
 				scene_tree->set_accessibility_warnings(EDITOR_GET("docks/scene_tree/accessibility_warnings"), false);
 			}
-			if (EditorSettings::get_singleton()->check_changed_settings_in_group("interface/editor")) {
-				inspect_hovered_node_delay->set_wait_time(EDITOR_GET("interface/editor/dragging_hover_wait_seconds"));
+			if (EditorSettings::get_singleton()->check_changed_settings_in_group("interface/editor/timers")) {
+				inspect_hovered_node_delay->set_wait_time(EDITOR_GET("interface/editor/timers/dragging_hover_wait_seconds"));
 			}
 		} break;
 
@@ -4940,7 +4940,7 @@ SceneTreeDock::SceneTreeDock(Node *p_scene_root, EditorSelection *p_editor_selec
 	ED_SHORTCUT("scene_tree/expand_collapse_all", TTRC("Expand/Collapse Branch"));
 	ED_SHORTCUT("scene_tree/cut_node", TTRC("Cut"), KeyModifierMask::CMD_OR_CTRL | Key::X);
 	ED_SHORTCUT("scene_tree/copy_node", TTRC("Copy"), KeyModifierMask::CMD_OR_CTRL | Key::C);
-	ED_SHORTCUT("scene_tree/paste_node", TTRC("Paste"), KeyModifierMask::CMD_OR_CTRL | Key::V);
+	ED_SHORTCUT("scene_tree/paste_node", TTRC("Paste (as Child)"), KeyModifierMask::CMD_OR_CTRL | Key::V);
 	ED_SHORTCUT("scene_tree/paste_node_as_sibling", TTRC("Paste as Sibling"), KeyModifierMask::CMD_OR_CTRL | KeyModifierMask::SHIFT | Key::V);
 	ED_SHORTCUT("scene_tree/paste_node_as_replacement", TTRC("Paste as Replacement"), KeyModifierMask::ALT | Key::V);
 	ED_SHORTCUT("scene_tree/change_node_type", TTRC("Change Type..."));
