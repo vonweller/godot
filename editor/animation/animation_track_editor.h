@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/templates/rb_map.h"
 #include "editor/editor_data.h"
 #include "editor/inspector/editor_properties.h"
 #include "editor/inspector/property_selector.h"
@@ -567,6 +568,8 @@ class AnimationMultiTrackKeyEdit;
 class AnimationBezierTrackEdit;
 
 class AnimationTrackEditGroup : public Control {
+	friend class AnimationTrackEditor;
+
 	GDCLASS(AnimationTrackEditGroup, Control);
 	Ref<Texture2D> icon;
 	Vector2 icon_size;
@@ -577,7 +580,7 @@ class AnimationTrackEditGroup : public Control {
 	AnimationTrackEditor *editor = nullptr;
 
 	bool hovered = false;
-
+	LocalVector<AnimationTrackEdit *> track_edits;
 	void _zoom_changed();
 
 protected:
@@ -617,8 +620,8 @@ class AnimationTrackEditor : public VBoxContainer {
 	AnimationBezierTrackEdit *bezier_edit = nullptr;
 	VBoxContainer *timeline_vbox = nullptr;
 
-	Control *timeline_rtl_spacer = nullptr;
-	void _update_timeline_rtl_spacer();
+	MarginContainer *timeline_mc = nullptr;
+	void _update_timeline_margins();
 
 	VBoxContainer *info_message_vbox = nullptr;
 	Label *info_message = nullptr;
@@ -896,7 +899,7 @@ class AnimationTrackEditor : public VBoxContainer {
 	void _pick_track_filter_text_changed(const String &p_newtext);
 	void _pick_track_select_recursive(TreeItem *p_item, const String &p_filter, Vector<Node *> &p_select_candidates);
 
-	double snap_unit;
+	double snap_unit = 0;
 	bool fps_compatible = true;
 	int nearest_fps = 0;
 	void _update_snap_unit();

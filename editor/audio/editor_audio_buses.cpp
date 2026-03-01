@@ -33,6 +33,7 @@
 #include "core/config/project_settings.h"
 #include "core/input/input.h"
 #include "core/io/resource_saver.h"
+#include "core/object/class_db.h"
 #include "core/os/keyboard.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/docks/filesystem_dock.h"
@@ -131,14 +132,6 @@ void EditorAudioBus::_notification(int p_what) {
 		case NOTIFICATION_READY: {
 			update_bus();
 			set_process(true);
-		} break;
-
-		case NOTIFICATION_ACCESSIBILITY_UPDATE: {
-			RID ae = get_accessibility_element();
-			ERR_FAIL_COND(ae.is_null());
-
-			DisplayServer::get_singleton()->accessibility_update_set_role(ae, DisplayServer::AccessibilityRole::ROLE_STATIC_TEXT);
-			DisplayServer::get_singleton()->accessibility_update_set_value(ae, TTR(vformat("The %s is not accessible at this time.", "Audio bus editor")));
 		} break;
 
 		case NOTIFICATION_DRAW: {
@@ -1373,7 +1366,7 @@ EditorAudioBuses::EditorAudioBuses() {
 	set_name(TTRC("Audio"));
 	set_icon_name("AudioStreamPlayer");
 	set_dock_shortcut(ED_SHORTCUT_AND_COMMAND("bottom_panels/toggle_audio_bottom_panel", TTRC("Toggle Audio Dock"), KeyModifierMask::ALT | Key::A));
-	set_default_slot(DockConstants::DOCK_SLOT_BOTTOM);
+	set_default_slot(EditorDock::DOCK_SLOT_BOTTOM);
 	set_available_layouts(EditorDock::DOCK_LAYOUT_HORIZONTAL | EditorDock::DOCK_LAYOUT_FLOATING);
 
 	VBoxContainer *main_vb = memnew(VBoxContainer);

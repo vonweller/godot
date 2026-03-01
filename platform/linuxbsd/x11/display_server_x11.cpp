@@ -32,26 +32,52 @@
 
 #ifdef X11_ENABLED
 
-#include "x11/detect_prime_x11.h"
 #include "x11/key_mapping_x11.h"
 
 #include "core/config/project_settings.h"
+#include "core/input/input.h"
 #include "core/io/file_access.h"
 #include "core/math/math_funcs.h"
+#include "core/object/callable_method_pointer.h"
 #include "core/os/main_loop.h"
 #include "core/string/print_string.h"
 #include "core/string/ustring.h"
-#include "core/version.h"
 #include "drivers/png/png_driver_common.h"
+#include "drivers/unix/os_unix.h"
 #include "main/main.h"
-
+#include "servers/display/native_menu.h"
 #include "servers/rendering/dummy/rasterizer_dummy.h"
 
-#if defined(VULKAN_ENABLED)
+#include <X11/Xatom.h>
+
+#ifdef SOWRAP_ENABLED
+#include "x11/dynwrappers/xext-so_wrap.h"
+#include "x11/dynwrappers/xinerama-so_wrap.h"
+#include "x11/dynwrappers/xrender-so_wrap.h"
+#else // !SOWRAP_ENABLED
+#undef CursorShape
+#include <X11/XKBlib.h>
+#include <X11/Xutil.h>
+
+#include <X11/extensions/Xext.h>
+#include <X11/extensions/Xinerama.h>
+#include <X11/extensions/Xrender.h>
+#include <X11/extensions/shape.h>
+#endif
+
+#ifdef RD_ENABLED
+#ifdef VULKAN_ENABLED
+#include "x11/rendering_context_driver_vulkan_x11.h"
+#endif
+
 #include "servers/rendering/renderer_rd/renderer_compositor_rd.h"
 #endif
 
-#if defined(GLES3_ENABLED)
+#ifdef GLES3_ENABLED
+#include "x11/detect_prime_x11.h"
+#include "x11/gl_manager_x11.h"
+#include "x11/gl_manager_x11_egl.h"
+
 #include "drivers/gles3/rasterizer_gles3.h"
 #endif
 
@@ -60,6 +86,10 @@
 #endif
 
 #ifdef DBUS_ENABLED
+#include "freedesktop_at_spi_monitor.h"
+#include "freedesktop_portal_desktop.h"
+#include "freedesktop_screensaver.h"
+
 #ifdef SOWRAP_ENABLED
 #include "dbus-so_wrap.h"
 #else
@@ -67,16 +97,17 @@
 #endif
 #endif
 
-#include <dlfcn.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <climits>
-#include <cstdio>
-#include <cstdlib>
+#ifdef SPEECHD_ENABLED
+#include "tts_linux.h"
+#endif
 
-#undef CursorShape
-#include <X11/XKBlib.h>
+#include <dlfcn.h> // dlopen
+//#include <sys/stat.h>
+//#include <sys/types.h>
+//#include <unistd.h>
+#include <climits> // LONG_MAX
+#include <cstdio> // stderr
+#include <cstdlib> // getenv
 
 // ICCCM
 #define WM_NormalState 1L // window normal state
@@ -2148,6 +2179,18 @@ int64_t DisplayServerX11::window_get_native_handle(HandleType p_handle_type, Win
 			}
 			return 0;
 		}
+		case GLX_VISUALID: {
+			if (gl_manager) {
+				return (int64_t)gl_manager->get_glx_visualid(p_window);
+			}
+			return 0;
+		}
+		case GLX_FBCONFIG: {
+			if (gl_manager) {
+				return (int64_t)gl_manager->get_glx_fbconfig(p_window);
+			}
+			return 0;
+		}
 #endif
 		default: {
 			return 0;
@@ -2350,10 +2393,12 @@ void DisplayServerX11::window_set_current_screen(int p_screen, WindowID p_window
 	}
 
 	if (window_get_mode(p_window) == WINDOW_MODE_FULLSCREEN || window_get_mode(p_window) == WINDOW_MODE_MAXIMIZED) {
+		WindowMode current_mode = window_get_mode(p_window);
+		window_set_mode(WINDOW_MODE_WINDOWED, p_window);
 		Point2i position = screen_get_position(p_screen);
 		Size2i size = screen_get_size(p_screen);
-
 		XMoveResizeWindow(x11_display, wd.x11_window, position.x, position.y, size.x, size.y);
+		window_set_mode(current_mode, p_window);
 	} else {
 		Rect2i srect = screen_get_usable_rect(p_screen);
 		Point2i wpos = window_get_position(p_window) - screen_get_position(window_get_current_screen(p_window));
@@ -7043,8 +7088,8 @@ DisplayServerX11::DisplayServerX11(const String &p_rendering_driver, WindowMode 
 			if (fallback_to_opengl3 && rendering_driver != "opengl3") {
 				WARN_PRINT("Your video card drivers seem not to support the required Vulkan version, switching to OpenGL 3.");
 				rendering_driver = "opengl3";
-				OS::get_singleton()->set_current_rendering_method("gl_compatibility");
-				OS::get_singleton()->set_current_rendering_driver_name(rendering_driver);
+				OS::get_singleton()->set_current_rendering_method("gl_compatibility", OS::RENDERING_SOURCE_FALLBACK);
+				OS::get_singleton()->set_current_rendering_driver_name(rendering_driver, OS::RENDERING_SOURCE_FALLBACK);
 			} else
 #endif // GLES3_ENABLED
 			{
@@ -7120,7 +7165,7 @@ DisplayServerX11::DisplayServerX11(const String &p_rendering_driver, WindowMode 
 			if (fallback) {
 				WARN_PRINT("Your video card drivers seem not to support the required OpenGL version, switching to OpenGLES.");
 				rendering_driver = "opengl3_es";
-				OS::get_singleton()->set_current_rendering_driver_name(rendering_driver);
+				OS::get_singleton()->set_current_rendering_driver_name(rendering_driver, OS::RENDERING_SOURCE_FALLBACK);
 			} else {
 				r_error = ERR_UNAVAILABLE;
 

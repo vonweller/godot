@@ -32,6 +32,7 @@
 
 #include "gdscript_text_document.h"
 #include "gdscript_workspace.h"
+#include "scene_cache.h"
 
 #include "core/io/stream_peer_tcp.h"
 #include "core/io/tcp_server.h"
@@ -46,9 +47,7 @@
 class GDScriptLanguageProtocol : public JSONRPC {
 	GDCLASS(GDScriptLanguageProtocol, JSONRPC)
 
-#ifdef TESTS_ENABLED
 	friend class TestGDScriptLanguageProtocolInitializer;
-#endif
 
 private:
 	struct LSPeer : RefCounted {
@@ -78,10 +77,10 @@ private:
 		~LSPeer();
 
 	private:
-		// We can't cache parsers for scripts not managed by the editor since we have
-		// no way to invalidate the cache. We still need to keep track of those parsers
-		// to clean them up properly.
-		HashMap<String, ExtendGDScriptParser *> stale_parsers;
+		void clear_stale_parsers();
+		// Paths of parsers which we can't cache longterm.
+		// Can be cleared up using `clear_stale_parsers()`.
+		HashSet<String> stale_parsers;
 	};
 
 	enum LSPErrorCode {
@@ -92,6 +91,7 @@ private:
 	static GDScriptLanguageProtocol *singleton;
 
 	HashMap<int, Ref<LSPeer>> clients;
+	SceneCache scene_cache;
 	Ref<TCPServer> server;
 	int latest_client_id = LSP_NO_CLIENT;
 	int next_client_id = 0;
@@ -119,6 +119,8 @@ public:
 	_FORCE_INLINE_ static GDScriptLanguageProtocol *get_singleton() { return singleton; }
 	_FORCE_INLINE_ Ref<GDScriptWorkspace> get_workspace() { return workspace; }
 	_FORCE_INLINE_ Ref<GDScriptTextDocument> get_text_document() { return text_document; }
+	_FORCE_INLINE_ SceneCache *get_scene_cache() { return &scene_cache; }
+
 	_FORCE_INLINE_ bool is_initialized() const { return _initialized; }
 
 	void poll(int p_limit_usec);

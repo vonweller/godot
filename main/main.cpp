@@ -74,6 +74,8 @@
 #include "servers/display/display_server.h"
 #include "servers/movie_writer/movie_writer.h"
 #include "servers/register_server_types.h"
+#include "servers/rendering/rendering_device.h"
+#include "servers/rendering/rendering_server.h"
 #include "servers/rendering/rendering_server_default.h"
 #include "servers/text/text_server.h"
 #include "servers/text/text_server_dummy.h"
@@ -196,8 +198,6 @@ static bool _start_success = false;
 String display_driver = "";
 String tablet_driver = "";
 String text_driver = "";
-String rendering_driver = "";
-String rendering_method = "";
 static int text_driver_idx = -1;
 static int audio_driver_idx = -1;
 
@@ -723,7 +723,12 @@ void Main::print_help(const char *p_binary) {
 	OS::get_singleton()->print("\n");
 }
 
-#ifdef TESTS_ENABLED
+#ifndef TESTS_ENABLED
+Error Main::test_setup() {
+	ERR_FAIL_V(ERR_UNAVAILABLE);
+}
+void Main::test_cleanup() {}
+#else
 // The order is the same as in `Main::setup()`, only core and some editor types
 // are initialized here. This also combines `Main::setup2()` initialization.
 Error Main::test_setup() {
@@ -932,7 +937,7 @@ void Main::test_cleanup() {
 
 	OS::get_singleton()->finalize_core();
 }
-#endif
+#endif // TESTS_ENABLED
 
 int Main::test_entrypoint(int argc, char *argv[], bool &tests_need_run) {
 	for (int x = 0; x < argc; x++) {
@@ -1083,6 +1088,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	bool delta_smoothing_override = false;
 	bool load_shell_env = false;
 
+	String rendering_driver = "";
+	String rendering_method = "";
+	OS::RenderingSource rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_DEFAULT;
+	OS::RenderingSource rendering_method_source = OS::RenderingSource::RENDERING_SOURCE_DEFAULT;
 	String default_renderer = "";
 	String default_renderer_mobile = "";
 	String renderer_hints = "";
@@ -1280,6 +1289,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		} else if (arg == "--rendering-driver") {
 			if (N) {
 				rendering_driver = N->get();
+				rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_COMMANDLINE;
 				N = N->next();
 			} else {
 				OS::get_singleton()->print("Missing rendering driver argument, aborting.\n");
@@ -2094,6 +2104,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			"DISABLE_LAYER", // GH-104154 (fpsmon).
 			"DISABLE_MANGOHUD", // GH-57403.
 			"DISABLE_VKBASALT",
+			"DISABLE_FOSSILIZE", // GH-115139.
 		};
 
 #if defined(WINDOWS_ENABLED) || defined(LINUXBSD_ENABLED)
@@ -2335,11 +2346,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 		Array force_angle_list;
 
-#define FORCE_ANGLE(m_vendor, m_name)       \
-	{                                       \
-		Dictionary device;                  \
-		device["vendor"] = m_vendor;        \
-		device["name"] = m_name;            \
+#define FORCE_ANGLE(m_vendor, m_name) \
+	{ \
+		Dictionary device; \
+		device["vendor"] = m_vendor; \
+		device["name"] = m_name; \
 		force_angle_list.push_back(device); \
 	}
 
@@ -2571,6 +2582,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	// Default to ProjectSettings default if nothing set on the command line.
 	if (rendering_method.is_empty()) {
 		rendering_method = GLOBAL_GET("rendering/renderer/rendering_method");
+		rendering_method_source = OS::RenderingSource::RENDERING_SOURCE_PROJECT_SETTING;
 	}
 
 	if (rendering_driver.is_empty()) {
@@ -2578,16 +2590,18 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			rendering_driver = "dummy";
 		} else if (rendering_method == "gl_compatibility") {
 			rendering_driver = GLOBAL_GET("rendering/gl_compatibility/driver");
+			rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_PROJECT_SETTING;
 		} else {
 			rendering_driver = GLOBAL_GET("rendering/rendering_device/driver");
+			rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_PROJECT_SETTING;
 		}
 	}
 
 	// always convert to lower case for consistency in the code
 	rendering_driver = rendering_driver.to_lower();
 
-	OS::get_singleton()->set_current_rendering_driver_name(rendering_driver);
-	OS::get_singleton()->set_current_rendering_method(rendering_method);
+	OS::get_singleton()->set_current_rendering_driver_name(rendering_driver, rendering_driver_source);
+	OS::get_singleton()->set_current_rendering_method(rendering_method, rendering_method_source);
 
 #ifdef TOOLS_ENABLED
 	if (!force_res && project_manager) {
@@ -2788,6 +2802,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 #ifndef _3D_DISABLED
 	// XR project settings.
 	GLOBAL_DEF_RST_BASIC("xr/openxr/enabled", false);
+	GLOBAL_DEF(PropertyInfo(Variant::STRING, "xr/openxr/target_api_version"), "");
 	GLOBAL_DEF_BASIC(PropertyInfo(Variant::STRING, "xr/openxr/default_action_map", PROPERTY_HINT_FILE, "*.tres"), "res://openxr_action_map.tres");
 	GLOBAL_DEF_BASIC(PropertyInfo(Variant::INT, "xr/openxr/form_factor", PROPERTY_HINT_ENUM, "Head Mounted,Handheld"), "0");
 	GLOBAL_DEF_BASIC(PropertyInfo(Variant::INT, "xr/openxr/view_configuration", PROPERTY_HINT_ENUM, "Mono,Stereo"), "1"); // "Mono,Stereo,Quad,Observer"
@@ -2819,6 +2834,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	GLOBAL_DEF_BASIC(PropertyInfo(Variant::INT, "xr/openxr/extensions/spatial_entity/april_tag_dict", PROPERTY_HINT_ENUM, "4x4H5,5x5H9,6x6H10,6x6H11"), "3");
 	GLOBAL_DEF_RST_BASIC("xr/openxr/extensions/eye_gaze_interaction", false);
 	GLOBAL_DEF_BASIC("xr/openxr/extensions/render_model", false);
+	GLOBAL_DEF_BASIC("xr/openxr/extensions/user_presence", false);
 
 	// OpenXR Binding modifier settings
 	GLOBAL_DEF_BASIC("xr/openxr/binding_modifiers/analog_threshold", false);
@@ -2996,9 +3012,9 @@ Error Main::setup2(bool p_show_boot_logo) {
 					bool ac_found = false;
 
 					if (editor) {
-						screen_property = "interface/editor/editor_screen";
+						screen_property = "interface/editor/appearance/editor_screen";
 					} else if (project_manager) {
-						screen_property = "interface/editor/project_manager_screen";
+						screen_property = "interface/editor/appearance/project_manager_screen";
 					} else {
 						// Skip.
 						screen_found = true;
@@ -3031,19 +3047,24 @@ Error Main::setup2(bool p_show_boot_logo) {
 							if (!ac_found && assign == "interface/accessibility/accessibility_support") {
 								accessibility_mode_editor = value;
 								ac_found = true;
-							} else if (!init_expand_to_title_found && assign == "interface/editor/expand_to_title") {
+							} else if (!init_expand_to_title_found && assign == "interface/editor/appearance/expand_to_title") {
 								init_expand_to_title = value;
 								init_expand_to_title_found = true;
-							} else if (!init_display_scale_found && assign == "interface/editor/display_scale") {
+							} else if (!init_display_scale_found && assign == "interface/editor/appearance/display_scale") {
 								init_display_scale = value;
 								init_display_scale_found = true;
-							} else if (!init_custom_scale_found && assign == "interface/editor/custom_display_scale") {
+							} else if (!init_custom_scale_found && assign == "interface/editor/appearance/custom_display_scale") {
 								init_custom_scale = value;
 								init_custom_scale_found = true;
 							} else if (!prefer_wayland_found && assign == "run/platforms/linuxbsd/prefer_wayland") {
-								prefer_wayland = value;
+								if (!OS::get_singleton()->get_environment("WAYLAND_DISPLAY").is_empty()) {
+									// Do not prefer Wayland if not currently on a Wayland session.
+									// This avoids error messages on startup when currently on X11
+									// and the Prefer Wayland setting is enabled.
+									prefer_wayland = value;
+								}
 								prefer_wayland_found = true;
-							} else if (!tablet_found && assign == "interface/editor/tablet_driver") {
+							} else if (!tablet_found && assign == "interface/editor/input/tablet_driver") {
 								tablet_driver_editor = value;
 								tablet_found = true;
 							}
@@ -3225,7 +3246,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 		}
 		DisplayServer::accessibility_set_mode(accessibility_mode);
 
-		// rendering_driver now held in static global String in main and initialized in setup()
+		String rendering_driver = OS::get_singleton()->get_current_rendering_driver_name();
 		Error err;
 		display_server = DisplayServer::create(display_driver_idx, rendering_driver, window_mode, window_vsync_mode, window_flags, window_position, window_size, init_screen, context, init_embed_parent_window_id, err);
 		if (err != OK || display_server == nullptr) {
@@ -3711,7 +3732,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 				GLOBAL_GET("display/mouse_cursor/custom_image"));
 		if (cursor.is_valid()) {
 			Vector2 hotspot = GLOBAL_GET("display/mouse_cursor/custom_image_hotspot");
-			Input::get_singleton()->set_custom_mouse_cursor(cursor, Input::CURSOR_ARROW, hotspot);
+			Input::get_singleton()->set_custom_mouse_cursor(cursor, Input::CursorShape::CURSOR_ARROW, hotspot);
 		}
 	}
 
@@ -3793,7 +3814,7 @@ void Main::setup_boot_logo() {
 	if (show_logo) { //boot logo!
 		const bool boot_logo_image = GLOBAL_DEF_BASIC("application/boot_splash/show_image", true);
 
-		const RenderingServer::SplashStretchMode boot_stretch_mode = GLOBAL_DEF_BASIC(PropertyInfo(Variant::INT, "application/boot_splash/stretch_mode", PROPERTY_HINT_ENUM, "Disabled,Keep,Keep Width,Keep Height,Cover,Ignore"), 1);
+		const RSE::SplashStretchMode boot_stretch_mode = GLOBAL_DEF_BASIC(PropertyInfo(Variant::INT, "application/boot_splash/stretch_mode", PROPERTY_HINT_ENUM, "Disabled,Keep,Keep Width,Keep Height,Cover,Ignore"), 1);
 		const bool boot_logo_filter = GLOBAL_DEF_BASIC("application/boot_splash/use_filter", true);
 		String boot_logo_path = GLOBAL_DEF_BASIC(PropertyInfo(Variant::STRING, "application/boot_splash/image", PROPERTY_HINT_FILE, "*.png"), String());
 
@@ -3847,7 +3868,7 @@ void Main::setup_boot_logo() {
 			MAIN_PRINT("Main: ClearColor");
 			RenderingServer::get_singleton()->set_default_clear_color(boot_bg_color);
 			MAIN_PRINT("Main: Image");
-			RenderingServer::get_singleton()->set_boot_image_with_stretch(splash, boot_bg_color, RenderingServer::SPLASH_STRETCH_MODE_DISABLED);
+			RenderingServer::get_singleton()->set_boot_image_with_stretch(splash, boot_bg_color, RSE::SPLASH_STRETCH_MODE_DISABLED);
 #endif
 		}
 
@@ -3860,10 +3881,6 @@ void Main::setup_boot_logo() {
 	}
 	RenderingServer::get_singleton()->set_default_clear_color(
 			GLOBAL_GET("rendering/environment/defaults/default_clear_color"));
-}
-
-String Main::get_rendering_driver_name() {
-	return rendering_driver;
 }
 
 String Main::get_locale_override() {
@@ -4364,7 +4381,7 @@ int Main::start() {
 			if (!game_path.is_empty() || !script.is_empty()) {
 				//autoload
 				OS::get_singleton()->benchmark_begin_measure("Startup", "Load Autoloads");
-				HashMap<StringName, ProjectSettings::AutoloadInfo> autoloads = ProjectSettings::get_singleton()->get_autoload_list();
+				HashMap<StringName, ProjectSettings::AutoloadInfo> autoloads(ProjectSettings::get_singleton()->get_autoload_list());
 
 				//first pass, add the constants so they exist before any script is loaded
 				for (const KeyValue<StringName, ProjectSettings::AutoloadInfo> &E : autoloads) {
@@ -4558,12 +4575,12 @@ int Main::start() {
 
 #ifdef TOOLS_ENABLED
 		if (editor) {
-			bool editor_embed_subwindows = EDITOR_GET("interface/editor/single_window_mode");
+			bool editor_embed_subwindows = EDITOR_GET("interface/editor/display/single_window_mode");
 
 			if (editor_embed_subwindows) {
 				sml->get_root()->set_embedding_subwindows(true);
 			}
-			restore_editor_window_layout = EDITOR_GET("interface/editor/editor_screen").operator int() == EditorSettings::InitialScreen::INITIAL_SCREEN_AUTO;
+			restore_editor_window_layout = EDITOR_GET("interface/editor/appearance/editor_screen").operator int() == EditorSettings::InitialScreen::INITIAL_SCREEN_AUTO;
 		}
 #endif
 
@@ -4704,11 +4721,42 @@ int Main::start() {
 	}
 
 	if (movie_writer) {
-		movie_writer->begin(DisplayServer::get_singleton()->window_get_size(), fixed_fps, Engine::get_singleton()->get_write_movie_path());
+		Size2i movie_size = Size2i(GLOBAL_GET("display/window/size/viewport_width"), GLOBAL_GET("display/window/size/viewport_height"));
+		String stretch_mode = GLOBAL_GET("display/window/stretch/mode");
+		if (stretch_mode != "viewport") {
+			// `canvas_items` and `disabled` modes use the window size override instead,
+			// which allows for higher resolution recording with 2D elements designed for a lower resolution.
+			const int window_width_override = GLOBAL_GET("display/window/size/window_width_override");
+			if (window_width_override > 0) {
+				movie_size.width = window_width_override;
+			}
+			const int window_height_override = GLOBAL_GET("display/window/size/window_height_override");
+			if (window_height_override > 0) {
+				movie_size.height = window_height_override;
+			}
+		}
+		movie_writer->begin(movie_size, fixed_fps, Engine::get_singleton()->get_write_movie_path());
 	}
 
 	GDExtensionManager::get_singleton()->startup();
 
+#ifdef MACOS_ENABLED
+	// TODO: Used to fix full-screen splash drawing on macOS, processing events before main loop is fully initialized cause issues on Wayland, and has no effect on other platforms.
+	if (minimum_time_msec) {
+		int64_t minimum_time = 1000 * minimum_time_msec;
+		uint64_t prev_time = OS::get_singleton()->get_ticks_usec();
+		while (minimum_time > 0) {
+			DisplayServer::get_singleton()->process_events();
+			OS::get_singleton()->delay_usec(100);
+
+			uint64_t next_time = OS::get_singleton()->get_ticks_usec();
+			minimum_time -= (next_time - prev_time);
+			prev_time = next_time;
+		}
+	} else {
+		DisplayServer::get_singleton()->process_events();
+	}
+#else
 	if (minimum_time_msec) {
 		uint64_t minimum_time = 1000 * minimum_time_msec;
 		uint64_t elapsed_time = OS::get_singleton()->get_ticks_usec();
@@ -4716,6 +4764,7 @@ int Main::start() {
 			OS::get_singleton()->delay_usec(minimum_time - elapsed_time);
 		}
 	}
+#endif
 
 	OS::get_singleton()->benchmark_end_measure("Startup", "Main::Start");
 	OS::get_singleton()->benchmark_dump();

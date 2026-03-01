@@ -45,6 +45,7 @@
 #include "scene/gui/subviewport_container.h"
 #include "scene/main/timer.h"
 #include "scene/resources/3d/importer_mesh.h"
+#include "scene/resources/sky.h"
 #include "scene/resources/surface_tool.h"
 
 class SceneImportSettingsData : public Object {
@@ -1022,7 +1023,7 @@ void SceneImportSettingsDialog::_inspector_property_edited(const String &p_name)
 		if (!animation_map.has(selected_id)) {
 			return;
 		}
-		HashMap<StringName, Variant> settings = animation_map[selected_id].settings;
+		HashMap<StringName, Variant> settings(animation_map[selected_id].settings);
 		if (settings.has(p_name)) {
 			animation_loop_mode = static_cast<Animation::LoopMode>((int)settings[p_name]);
 		} else {
@@ -1106,7 +1107,7 @@ void SceneImportSettingsDialog::_reset_animation(const String &p_animation_name)
 		animation_pingpong = false;
 
 		if (animation_map.has(p_animation_name)) {
-			HashMap<StringName, Variant> settings = animation_map[p_animation_name].settings;
+			HashMap<StringName, Variant> settings(animation_map[p_animation_name].settings);
 			if (settings.has("settings/loop_mode")) {
 				animation_loop_mode = static_cast<Animation::LoopMode>((int)settings["settings/loop_mode"]);
 			}
@@ -1375,12 +1376,6 @@ void SceneImportSettingsDialog::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_THEME_CHANGED: {
-			action_menu->begin_bulk_theme_override();
-			action_menu->add_theme_style_override(CoreStringName(normal), get_theme_stylebox(CoreStringName(normal), "Button"));
-			action_menu->add_theme_style_override(SceneStringName(hover), get_theme_stylebox(SceneStringName(hover), "Button"));
-			action_menu->add_theme_style_override(SceneStringName(pressed), get_theme_stylebox(SceneStringName(pressed), "Button"));
-			action_menu->end_bulk_theme_override();
-
 			if (animation_player != nullptr && animation_player->is_playing()) {
 				animation_play_button->set_button_icon(get_editor_theme_icon(SNAME("Pause")));
 			} else {
@@ -1999,6 +1994,8 @@ SceneImportSettingsDialog::SceneImportSettingsDialog() {
 	update_view_timer->set_one_shot(true);
 	update_view_timer->connect("timeout", callable_mp(this, &SceneImportSettingsDialog::_update_view_gizmos));
 	add_child(update_view_timer);
+
+	EditorNode::get_singleton()->register_hdr_viewport(base_viewport);
 }
 
 SceneImportSettingsDialog::~SceneImportSettingsDialog() {

@@ -35,6 +35,7 @@
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_saver.h"
+#include "core/object/class_db.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
 #include "core/variant/variant_parser.h"
@@ -127,6 +128,11 @@ String EditorFileSystemDirectory::get_path() const {
 
 String EditorFileSystemDirectory::get_file_path(int p_idx) const {
 	return get_path().path_join(get_file(p_idx));
+}
+
+ResourceUID::ID EditorFileSystemDirectory::get_file_uid(int p_idx) const {
+	ERR_FAIL_INDEX_V(p_idx, files.size(), ResourceUID::INVALID_ID);
+	return files[p_idx]->uid;
 }
 
 Vector<String> EditorFileSystemDirectory::get_file_deps(int p_idx) const {
@@ -232,6 +238,12 @@ EditorFileSystemDirectory::~EditorFileSystemDirectory() {
 	for (EditorFileSystemDirectory *dir : subdirs) {
 		memdelete(dir);
 	}
+}
+
+void EditorFileSystemImportFormatSupportQuery::_bind_methods() {
+	GDVIRTUAL_BIND(_is_active);
+	GDVIRTUAL_BIND(_get_file_extensions);
+	GDVIRTUAL_BIND(_query);
 }
 
 EditorFileSystem::ScannedDirectory::~ScannedDirectory() {
@@ -2539,7 +2551,7 @@ void EditorFileSystem::_notify_filesystem_changed() {
 }
 
 HashSet<String> EditorFileSystem::get_valid_extensions() const {
-	return valid_extensions;
+	return HashSet<String>(valid_extensions);
 }
 
 void EditorFileSystem::_register_global_class_script(const String &p_search_path, const String &p_target_path, const ScriptClassInfoUpdate &p_script_update) {
@@ -2785,7 +2797,7 @@ Error EditorFileSystem::_reimport_file(const String &p_file, const HashMap<Strin
 
 	//try to obtain existing params
 
-	HashMap<StringName, Variant> params = p_custom_options;
+	HashMap<StringName, Variant> params(p_custom_options);
 	String importer_name; //empty by default though
 
 	if (!p_custom_importer.is_empty()) {
@@ -3285,7 +3297,12 @@ void EditorFileSystem::reimport_files(const Vector<String> &p_files) {
 	// Emit the resource_reimporting signal for the single file before the actual importation.
 	emit_signal(SNAME("resources_reimporting"), reloads);
 
-#ifdef THREADS_ENABLED
+#ifdef WEB_ENABLED
+	// On web, busy-wait loops on the main thread block the JavaScript event loop,
+	// causing the browser tab to appear frozen. Disable threaded imports entirely.
+	// See GH-112072 for details.
+	bool use_multiple_threads = false;
+#elif defined(THREADS_ENABLED)
 	bool use_multiple_threads = GLOBAL_GET("editor/import/use_multiple_threads");
 #else
 	bool use_multiple_threads = false;
@@ -3679,6 +3696,7 @@ bool EditorFileSystem::_scan_extensions() {
 void EditorFileSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_filesystem"), &EditorFileSystem::get_filesystem);
 	ClassDB::bind_method(D_METHOD("is_scanning"), &EditorFileSystem::is_scanning);
+	ClassDB::bind_method(D_METHOD("is_importing"), &EditorFileSystem::is_importing);
 	ClassDB::bind_method(D_METHOD("get_scanning_progress"), &EditorFileSystem::get_scanning_progress);
 	ClassDB::bind_method(D_METHOD("scan"), &EditorFileSystem::scan);
 	ClassDB::bind_method(D_METHOD("scan_sources"), &EditorFileSystem::scan_changes);
@@ -3750,7 +3768,9 @@ void EditorFileSystem::remove_import_format_support_query(Ref<EditorFileSystemIm
 }
 
 EditorFileSystem::EditorFileSystem() {
-#ifdef THREADS_ENABLED
+#if defined(THREADS_ENABLED) && !defined(WEB_ENABLED)
+	// On web, threaded scanning blocks the browser's event loop, causing freezes.
+	// See GH-112072 for details.
 	use_threads = true;
 #endif
 

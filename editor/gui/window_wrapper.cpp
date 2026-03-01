@@ -30,6 +30,7 @@
 
 #include "window_wrapper.h"
 
+#include "core/object/class_db.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/progress_dialog.h"
@@ -383,12 +384,12 @@ WindowWrapper::WindowWrapper() {
 	window_background->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
 	window->add_child(window_background);
 
-	ProgressDialog::get_singleton()->add_host_window(window);
+	ProgressDialog::get_singleton()->add_host_window(window_id);
 }
 
 WindowWrapper::~WindowWrapper() {
-	if (ObjectDB::get_instance(window_id)) {
-		ProgressDialog::get_singleton()->remove_host_window(window);
+	if (ProgressDialog::get_singleton()) {
+		ProgressDialog::get_singleton()->remove_host_window(window_id);
 	}
 }
 

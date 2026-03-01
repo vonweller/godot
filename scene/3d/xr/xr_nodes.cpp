@@ -31,6 +31,7 @@
 #include "xr_nodes.h"
 
 #include "core/config/project_settings.h"
+#include "core/object/class_db.h"
 #include "scene/main/viewport.h"
 #include "servers/xr/xr_interface.h"
 
@@ -691,9 +692,12 @@ PackedStringArray XROrigin3D::get_configuration_warnings() const {
 				has_camera = true;
 			}
 		}
-
 		if (!has_camera) {
 			warnings.push_back(RTR("XROrigin3D requires an XRCamera3D child node."));
+		}
+
+		if (!get_scale().is_equal_approx(Vector3(1, 1, 1))) {
+			warnings.push_back(RTR("Changing the scale on the XROrigin3D node is not supported. Change the World Scale instead."));
 		}
 	}
 
