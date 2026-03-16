@@ -195,6 +195,7 @@ class ProjectExportDialog : public ConfirmationDialog {
 	LineEdit *seed_input = nullptr;
 
 	OptionButton *script_mode = nullptr;
+	Label *enc_info_label = nullptr;
 
 	void _open_export_template_manager();
 

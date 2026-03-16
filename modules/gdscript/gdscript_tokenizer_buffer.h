@@ -39,6 +39,9 @@ public:
 		COMPRESS_ZSTD,
 	};
 
+	static const char *DEFAULT_ENC_KEY;
+	static void process_xor_encryption(Vector<uint8_t> &p_buffer, const String &p_key);
+
 	static constexpr uint32_t TOKENIZER_VERSION = 101;
 	static constexpr uint32_t TOKEN_BYTE_MASK = 0x80;
 	static constexpr uint32_t TOKEN_BITS = 8;
