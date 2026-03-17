@@ -31,7 +31,7 @@
 #pragma once
 
 #include "core/io/resource.h"
-#include "core/object/gdvirtual.gen.inc"
+#include "core/object/gdvirtual.gen.h"
 #include "scene/animation/tween.h"
 
 class CanvasItem;
