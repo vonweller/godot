@@ -33,7 +33,10 @@
 #include "animation.h"
 #include "scene/gui/control.h"
 #include "core/object/class_db.h"
+#include "core/object/callable_mp.h"
+#include "core/os/os.h"
 #include "scene/main/canvas_item.h"
+#include "servers/rendering/rendering_server.h"
 
 Size2 StyleBox::get_minimum_size() const {
 	Size2 min_size = Size2(get_margin(SIDE_LEFT) + get_margin(SIDE_RIGHT), get_margin(SIDE_TOP) + get_margin(SIDE_BOTTOM));

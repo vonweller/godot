@@ -32,6 +32,7 @@
 
 #include "core/object/class_db.h"
 #include "servers/rendering/rendering_server.h"
+#include "servers/rendering/rendering_server_enums.h"
 
 float StyleBoxTexture::get_style_margin(Side p_side) const {
 	ERR_FAIL_INDEX_V((int)p_side, 4, 0.0);
@@ -197,7 +198,7 @@ void StyleBoxTexture::draw(RID p_canvas_item, const Rect2 &p_rect) const {
 	Vector2 start_offset = Vector2(texture_margin_animated[SIDE_LEFT], texture_margin_animated[SIDE_TOP]);
 	Vector2 end_offset = Vector2(texture_margin_animated[SIDE_RIGHT], texture_margin_animated[SIDE_BOTTOM]);
 
-	RenderingServer::get_singleton()->canvas_item_add_nine_patch(p_canvas_item, rect, src_rect, texture->get_scaled_rid(), start_offset, end_offset, RS::NinePatchAxisMode(axis_h), RS::NinePatchAxisMode(axis_v), draw_center, modulate_animated);
+	RenderingServer::get_singleton()->canvas_item_add_nine_patch(p_canvas_item, rect, src_rect, texture->get_scaled_rid(), start_offset, end_offset, RSE::NinePatchAxisMode(axis_h), RSE::NinePatchAxisMode(axis_v), draw_center, modulate_animated);
 	end_draw(p_canvas_item, p_rect);
 	RenderingServer::get_singleton()->canvas_item_add_nine_patch(p_canvas_item, rect, src_rect, texture->get_scaled_rid(), start_offset, end_offset, RSE::NinePatchAxisMode(axis_h), RSE::NinePatchAxisMode(axis_v), draw_center, modulate);
 }

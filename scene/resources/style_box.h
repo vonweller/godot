@@ -31,9 +31,9 @@
 #pragma once
 
 #include "core/io/resource.h"
-#include "core/object/gdvirtual.gen.inc"
-#include "scene/animation/tween.h"
 #include "core/object/gdvirtual.gen.h"
+#include "scene/animation/tween.h"
+#include "scene/main/scene_tree.h"
 
 class CanvasItem;
 class Control;
