@@ -35,7 +35,6 @@
 #include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
-#include "core/version.h"
 
 void class_db_api_to_json(const String &p_output_file, ClassDB::APIType p_api) {
 	Dictionary classes_dict;
@@ -51,9 +50,9 @@ void class_db_api_to_json(const String &p_output_file, ClassDB::APIType p_api) {
 		}
 
 		Dictionary class_dict;
-		classes_dict[t->name] = class_dict;
+		classes_dict[t->gdtype->get_name()] = class_dict;
 
-		class_dict["inherits"] = t->inherits;
+		class_dict["inherits"] = t->gdtype->get_super_type_name();
 
 		{ //methods
 
