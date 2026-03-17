@@ -33,6 +33,7 @@
 #include "core/io/resource.h"
 #include "core/object/gdvirtual.gen.inc"
 #include "scene/animation/tween.h"
+#include "core/object/gdvirtual.gen.h"
 
 class CanvasItem;
 class Control;

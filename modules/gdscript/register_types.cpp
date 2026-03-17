@@ -39,8 +39,10 @@
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_highlighter.h"
 #include "editor/gdscript_translation_parser_plugin.h"
+#include "editor/script/script_editor_plugin.h"
 
 #ifndef GDSCRIPT_NO_LSP
+#include "language_server/gdscript_language_protocol.h"
 #include "language_server/gdscript_language_server.h"
 #endif
 #endif // TOOLS_ENABLED
@@ -51,10 +53,12 @@
 
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
+#include "core/object/class_db.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_node.h"
 #include "editor/export/editor_export.h"
+#include "editor/export/editor_export_platform.h"
 #include "editor/translations/editor_translation_parser.h"
 
 #ifndef GDSCRIPT_NO_LSP
@@ -91,6 +95,8 @@ protected:
 		}
 	}
 
+
+
 	virtual void _export_file(const String &p_path, const String &p_type, const HashSet<String> &p_features) override {
 		if (p_path.get_extension() != "gd" || script_mode == EditorExportPreset::MODE_SCRIPT_TEXT) {
 			return;
@@ -108,7 +114,18 @@ protected:
 			return;
 		}
 
-		add_file(p_path.get_basename() + ".gdc", file, true);
+		String key = GDScriptTokenizerBuffer::DEFAULT_ENC_KEY;
+		GDScriptTokenizerBuffer::process_xor_encryption(file, key);
+
+		Vector<uint8_t> final_file;
+		final_file.resize(4);
+		final_file.write[0] = 'G';
+		final_file.write[1] = 'D';
+		final_file.write[2] = 'S';
+		final_file.write[3] = 'X';
+		final_file.append_array(file);
+
+		add_file(p_path.get_basename() + ".gdc", final_file, true);
 	}
 
 public:
@@ -125,13 +142,6 @@ static void _editor_init() {
 	gdscript_syntax_highlighter.instantiate();
 	ScriptEditor::get_singleton()->register_syntax_highlighter(gdscript_syntax_highlighter);
 #endif
-
-#ifndef GDSCRIPT_NO_LSP
-	register_lsp_types();
-	GDScriptLanguageServer *lsp_plugin = memnew(GDScriptLanguageServer);
-	EditorNode::get_singleton()->add_editor_plugin(lsp_plugin);
-	Engine::get_singleton()->add_singleton(Engine::Singleton("GDScriptLanguageProtocol", GDScriptLanguageProtocol::get_singleton()));
-#endif // !GDSCRIPT_NO_LSP
 }
 
 #endif // TOOLS_ENABLED
@@ -162,6 +172,15 @@ void initialize_gdscript_module(ModuleInitializationLevel p_level) {
 		EditorTranslationParser::get_singleton()->add_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);
 	} else if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		GDREGISTER_CLASS(GDScriptSyntaxHighlighter);
+#ifndef GDSCRIPT_NO_LSP
+		register_lsp_types();
+		memnew(GDScriptLanguageProtocol);
+		EditorPlugins::add_by_type<GDScriptLanguageServer>();
+
+		Engine::Singleton singleton("GDScriptLanguageProtocol", GDScriptLanguageProtocol::get_singleton());
+		singleton.editor_only = true;
+		Engine::get_singleton()->add_singleton(singleton);
+#endif // !GDSCRIPT_NO_LSP
 	}
 #endif // TOOLS_ENABLED
 }
@@ -192,6 +211,9 @@ void uninitialize_gdscript_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		EditorTranslationParser::get_singleton()->remove_parser(gdscript_translation_parser_plugin, EditorTranslationParser::STANDARD);
 		gdscript_translation_parser_plugin.unref();
+#ifndef GDSCRIPT_NO_LSP
+		memdelete(GDScriptLanguageProtocol::get_singleton());
+#endif // GDSCRIPT_NO_LSP
 	}
 #endif // TOOLS_ENABLED
 }

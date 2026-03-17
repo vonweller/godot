@@ -30,6 +30,7 @@
 
 #include "style_box_texture.h"
 
+#include "core/object/class_db.h"
 #include "servers/rendering/rendering_server.h"
 
 float StyleBoxTexture::get_style_margin(Side p_side) const {
@@ -198,6 +199,7 @@ void StyleBoxTexture::draw(RID p_canvas_item, const Rect2 &p_rect) const {
 
 	RenderingServer::get_singleton()->canvas_item_add_nine_patch(p_canvas_item, rect, src_rect, texture->get_scaled_rid(), start_offset, end_offset, RS::NinePatchAxisMode(axis_h), RS::NinePatchAxisMode(axis_v), draw_center, modulate_animated);
 	end_draw(p_canvas_item, p_rect);
+	RenderingServer::get_singleton()->canvas_item_add_nine_patch(p_canvas_item, rect, src_rect, texture->get_scaled_rid(), start_offset, end_offset, RSE::NinePatchAxisMode(axis_h), RSE::NinePatchAxisMode(axis_v), draw_center, modulate);
 }
 
 void StyleBoxTexture::_bind_methods() {
@@ -227,7 +229,7 @@ void StyleBoxTexture::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_v_axis_stretch_mode", "mode"), &StyleBoxTexture::set_v_axis_stretch_mode);
 	ClassDB::bind_method(D_METHOD("get_v_axis_stretch_mode"), &StyleBoxTexture::get_v_axis_stretch_mode);
 
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture2D"), "set_texture", "get_texture");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_texture", "get_texture");
 
 	ADD_GROUP("Texture Margins", "texture_margin_");
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "texture_margin_left", PROPERTY_HINT_RANGE, "0,2048,1,suffix:px"), "set_texture_margin", "get_texture_margin", SIDE_LEFT);

@@ -30,6 +30,8 @@
 
 #include "window_wrapper.h"
 
+#include "core/object/callable_mp.h"
+#include "core/object/class_db.h" // IWYU pragma: keep. `ADD_SIGNAL` macro.
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/progress_dialog.h"
@@ -40,6 +42,7 @@
 #include "scene/gui/panel.h"
 #include "scene/gui/popup.h"
 #include "scene/main/window.h"
+#include "servers/display/display_server.h"
 
 // WindowWrapper
 
@@ -236,7 +239,7 @@ void WindowWrapper::restore_window_from_saved_position(const Rect2 p_window_rect
 	int screen = p_screen;
 	Rect2 restored_screen_rect = p_screen_rect;
 
-	if (DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_SELF_FITTING_WINDOWS)) {
+	if (DisplayServer::get_singleton()->has_feature(DisplayServerEnums::FEATURE_SELF_FITTING_WINDOWS)) {
 		window_rect = Rect2i();
 		restored_screen_rect = Rect2i();
 	}
@@ -383,12 +386,12 @@ WindowWrapper::WindowWrapper() {
 	window_background->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
 	window->add_child(window_background);
 
-	ProgressDialog::get_singleton()->add_host_window(window);
+	ProgressDialog::get_singleton()->add_host_window(window_id);
 }
 
 WindowWrapper::~WindowWrapper() {
-	if (ObjectDB::get_instance(window_id)) {
-		ProgressDialog::get_singleton()->remove_host_window(window);
+	if (ProgressDialog::get_singleton()) {
+		ProgressDialog::get_singleton()->remove_host_window(window_id);
 	}
 }
 

@@ -36,6 +36,7 @@
 #include "gltf_template_convert.h"
 #include "skin_tool.h"
 
+#include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/crypto/crypto_core.h"
 #include "core/io/config_file.h"
@@ -44,9 +45,9 @@
 #include "core/io/file_access_memory.h"
 #include "core/io/json.h"
 #include "core/io/stream_peer.h"
+#include "core/object/class_db.h"
 #include "core/object/object_id.h"
 #include "core/version.h"
-#include "scene/2d/node_2d.h"
 #include "scene/3d/bone_attachment_3d.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -1436,7 +1437,7 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 		TypedArray<Material> instance_materials;
 
 		for (int j = 0; j < primitives.size(); j++) {
-			uint64_t flags = RS::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+			uint64_t flags = RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 			Dictionary mesh_prim = primitives[j];
 
 			Array array;
@@ -1745,7 +1746,7 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 			}
 
 			if (p_state->force_disable_compression || is_mesh_2d || !a.has("POSITION") || !a.has("NORMAL") || mesh_prim.has("targets") || (a.has("JOINTS_0") || a.has("JOINTS_1"))) {
-				flags &= ~RS::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+				flags &= ~RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 			}
 
 			Ref<SurfaceTool> mesh_surface_tool;
@@ -1761,19 +1762,19 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> p_state) {
 			}
 			array = mesh_surface_tool->commit_to_arrays();
 
-			if ((flags & RS::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && a.has("NORMAL") && (a.has("TANGENT") || generate_tangents)) {
+			if ((flags & RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES) && a.has("NORMAL") && (a.has("TANGENT") || generate_tangents)) {
 				// Compression is enabled, so let's validate that the normals and tangents are correct.
 				Vector<Vector3> normals = array[Mesh::ARRAY_NORMAL];
 				Vector<float> tangents = array[Mesh::ARRAY_TANGENT];
 				if (unlikely(tangents.size() < normals.size() * 4)) {
 					ERR_PRINT("glTF import: Mesh " + itos(i) + " has invalid tangents.");
-					flags &= ~RS::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+					flags &= ~RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 				} else {
 					for (int vert = 0; vert < normals.size(); vert++) {
 						Vector3 tan = Vector3(tangents[vert * 4 + 0], tangents[vert * 4 + 1], tangents[vert * 4 + 2]);
 						if (std::abs(tan.dot(normals[vert])) > 0.0001) {
 							// Tangent is not perpendicular to the normal, so we can't use compression.
-							flags &= ~RS::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
+							flags &= ~RSE::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 						}
 					}
 				}
@@ -2053,10 +2054,18 @@ Error GLTFDocument::_serialize_images(Ref<GLTFState> p_state) {
 	return OK;
 }
 
+static inline Ref<Image> _duplicate_and_decompress_image(const Ref<Image> &p_image) {
+	Ref<Image> img = p_image->duplicate();
+	if (img->is_compressed()) {
+		img->decompress();
+	}
+	return img;
+}
+
 Dictionary GLTFDocument::_serialize_image(Ref<GLTFState> p_state, Ref<Image> p_image, const String &p_image_format, float p_lossy_quality, Ref<GLTFDocumentExtension> p_image_save_extension) {
 	Dictionary image_dict;
 	if (p_image->is_compressed()) {
-		p_image->decompress();
+		p_image = _duplicate_and_decompress_image(p_image);
 		ERR_FAIL_COND_V_MSG(p_image->is_compressed(), image_dict, "glTF: Image was compressed, but could not be decompressed.");
 	}
 
@@ -2707,10 +2716,7 @@ Error GLTFDocument::_serialize_materials(Ref<GLTFState> p_state) {
 				if (has_ao) {
 					height = ao_texture->get_height();
 					width = ao_texture->get_width();
-					ao_image = ao_texture->get_image();
-					if (ao_image->is_compressed()) {
-						ao_image->decompress();
-					}
+					ao_image = _duplicate_and_decompress_image(ao_texture->get_image());
 					if (!ao_texture->get_path().is_empty()) {
 						common_paths.insert(ao_texture->get_path());
 					}
@@ -2719,10 +2725,7 @@ Error GLTFDocument::_serialize_materials(Ref<GLTFState> p_state) {
 				if (has_roughness) {
 					height = roughness_texture->get_height();
 					width = roughness_texture->get_width();
-					roughness_image = roughness_texture->get_image();
-					if (roughness_image->is_compressed()) {
-						roughness_image->decompress();
-					}
+					roughness_image = _duplicate_and_decompress_image(roughness_texture->get_image());
 					if (!roughness_texture->get_path().is_empty()) {
 						common_paths.insert(roughness_texture->get_path());
 					}
@@ -2731,10 +2734,7 @@ Error GLTFDocument::_serialize_materials(Ref<GLTFState> p_state) {
 				if (has_metalness) {
 					height = metallic_texture->get_height();
 					width = metallic_texture->get_width();
-					metallness_image = metallic_texture->get_image();
-					if (metallness_image->is_compressed()) {
-						metallness_image->decompress();
-					}
+					metallness_image = _duplicate_and_decompress_image(metallic_texture->get_image());
 					if (!metallic_texture->get_path().is_empty()) {
 						common_paths.insert(metallic_texture->get_path());
 					}
@@ -2805,9 +2805,6 @@ Error GLTFDocument::_serialize_materials(Ref<GLTFState> p_state) {
 				has_ao = true;
 				has_roughness = true;
 				has_metalness = true;
-				Ref<Image> orm_image = original_orm_tex->get_image();
-				orm_image->decompress();
-				orm_image->convert(Image::FORMAT_RGBA8);
 
 				_set_material_texture_name(original_orm_tex, original_orm_tex->get_path(), mat_name, "_orm");
 				orm_texture_index = _set_texture(p_state, original_orm_tex, base_material->get_texture_filter(), base_material->get_flag(BaseMaterial3D::FLAG_USE_TEXTURE_REPEAT));
@@ -2839,26 +2836,23 @@ Error GLTFDocument::_serialize_materials(Ref<GLTFState> p_state) {
 			String path;
 			{
 				Ref<Texture2D> normal_texture = base_material->get_texture(BaseMaterial3D::TEXTURE_NORMAL);
-				if (normal_texture.is_valid()) {
+				if (normal_texture.is_valid() && normal_texture->get_image().is_valid()) {
 					path = normal_texture->get_path();
 					// Code for uncompressing RG normal maps
-					Ref<Image> img = normal_texture->get_image();
-					if (img.is_valid()) {
-						img->decompress();
-						img->convert(Image::FORMAT_RGBA8);
-						for (int32_t y = 0; y < img->get_height(); y++) {
-							for (int32_t x = 0; x < img->get_width(); x++) {
-								Color c = img->get_pixel(x, y);
-								Vector2 red_green = Vector2(c.r, c.g);
-								red_green = red_green * Vector2(2.0f, 2.0f) - Vector2(1.0f, 1.0f);
-								float blue = 1.0f - red_green.dot(red_green);
-								blue = MAX(0.0f, blue);
-								c.b = Math::sqrt(blue);
-								img->set_pixel(x, y, c);
-							}
+					Ref<Image> img = _duplicate_and_decompress_image(normal_texture->get_image());
+					img->convert(Image::FORMAT_RGBA8);
+					for (int32_t y = 0; y < img->get_height(); y++) {
+						for (int32_t x = 0; x < img->get_width(); x++) {
+							Color c = img->get_pixel(x, y);
+							Vector2 red_green = Vector2(c.r, c.g);
+							red_green = red_green * Vector2(2.0f, 2.0f) - Vector2(1.0f, 1.0f);
+							float blue = 1.0f - red_green.dot(red_green);
+							blue = MAX(0.0f, blue);
+							c.b = Math::sqrt(blue);
+							img->set_pixel(x, y, c);
 						}
-						tex->set_image(img);
 					}
+					tex->set_image(img);
 				}
 			}
 			GLTFTextureIndex gltf_texture_index = -1;
@@ -3524,9 +3518,7 @@ Error GLTFDocument::_serialize_animations(Ref<GLTFState> p_state) {
 	}
 	for (int32_t player_i = 0; player_i < p_state->animation_players.size(); player_i++) {
 		AnimationPlayer *animation_player = p_state->animation_players[player_i];
-		List<StringName> animations;
-		animation_player->get_animation_list(&animations);
-		for (const StringName &animation_name : animations) {
+		for (const StringName &animation_name : animation_player->get_sorted_animation_list()) {
 			_convert_animation(p_state, animation_player, animation_name);
 		}
 	}
@@ -5956,6 +5948,16 @@ GLTFNodeIndex GLTFDocument::_node_and_or_bone_to_gltf_node_index(Ref<GLTFState> 
 	ERR_FAIL_V_MSG(-1, vformat("glTF: A node was animated, but it wasn't found in the GLTFState. Ensure that all nodes referenced by the AnimationPlayer are in the scene you are exporting."));
 }
 
+template <typename T>
+static inline Error _try_interpolate_value_track(const Ref<Animation> &p_godot_animation, int32_t p_godot_anim_track_index, double p_time, T &r_value) {
+	Variant val = p_godot_animation->value_track_interpolate(p_godot_anim_track_index, p_time, false);
+	if (val.get_type() != GetTypeInfo<T>::VARIANT_TYPE) {
+		return ERR_INVALID_PARAMETER;
+	}
+	r_value = val;
+	return OK;
+}
+
 bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAnimation::NodeTrack &p_gltf_node_track, const Ref<Animation> &p_godot_animation, int32_t p_godot_anim_track_index, Vector<double> &p_times) {
 	GLTFAnimation::Interpolation gltf_interpolation = GLTFAnimation::godot_to_gltf_interpolation(p_godot_animation, p_godot_anim_track_index);
 	const Animation::TrackType track_type = p_godot_animation->track_get_type(p_godot_anim_track_index);
@@ -6095,7 +6097,7 @@ bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAni
 					bool last = false;
 					while (true) {
 						Vector3 position;
-						Error err = p_godot_animation->try_position_track_interpolate(p_godot_anim_track_index, time, &position);
+						Error err = _try_interpolate_value_track(p_godot_animation, p_godot_anim_track_index, time, position);
 						if (err == OK) {
 							p_gltf_node_track.position_track.values.push_back(position);
 							p_gltf_node_track.position_track.times.push_back(time);
@@ -6131,7 +6133,17 @@ bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAni
 					bool last = false;
 					while (true) {
 						Quaternion rotation;
-						Error err = p_godot_animation->try_rotation_track_interpolate(p_godot_anim_track_index, time, &rotation);
+						Error err;
+						if (node_prop == "quaternion") {
+							err = _try_interpolate_value_track(p_godot_animation, p_godot_anim_track_index, time, rotation);
+						} else {
+							Vector3 rotation_euler;
+							err = _try_interpolate_value_track(p_godot_animation, p_godot_anim_track_index, time, rotation_euler);
+							if (node_prop == "rotation_degrees") {
+								rotation_euler *= Math::TAU / 360.0;
+							}
+							rotation = Quaternion::from_euler(rotation_euler);
+						}
 						if (err == OK) {
 							p_gltf_node_track.rotation_track.values.push_back(rotation);
 							p_gltf_node_track.rotation_track.times.push_back(time);
@@ -6177,7 +6189,7 @@ bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAni
 					bool last = false;
 					while (true) {
 						Vector3 scale;
-						Error err = p_godot_animation->try_scale_track_interpolate(p_godot_anim_track_index, time, &scale);
+						Error err = _try_interpolate_value_track(p_godot_animation, p_godot_anim_track_index, time, scale);
 						if (err == OK) {
 							p_gltf_node_track.scale_track.values.push_back(scale);
 							p_gltf_node_track.scale_track.times.push_back(time);
@@ -6222,17 +6234,12 @@ bool GLTFDocument::_convert_animation_node_track(Ref<GLTFState> p_state, GLTFAni
 					double time = 0.0;
 					bool last = false;
 					while (true) {
-						Vector3 position;
-						Quaternion rotation;
-						Vector3 scale;
-						Error err = p_godot_animation->try_position_track_interpolate(p_godot_anim_track_index, time, &position);
+						Transform3D transform;
+						Error err = _try_interpolate_value_track(p_godot_animation, p_godot_anim_track_index, time, transform);
 						if (err == OK) {
-							err = p_godot_animation->try_rotation_track_interpolate(p_godot_anim_track_index, time, &rotation);
-							if (err == OK) {
-								err = p_godot_animation->try_scale_track_interpolate(p_godot_anim_track_index, time, &scale);
-							}
-						}
-						if (err == OK) {
+							Vector3 position = transform.get_origin();
+							Quaternion rotation = transform.basis.get_rotation_quaternion();
+							Vector3 scale = transform.basis.get_scale();
 							p_gltf_node_track.position_track.values.push_back(position);
 							p_gltf_node_track.position_track.times.push_back(time);
 							p_gltf_node_track.rotation_track.values.push_back(rotation);
@@ -6379,7 +6386,9 @@ void GLTFDocument::_convert_animation(Ref<GLTFState> p_state, AnimationPlayer *p
 		}
 		// Get the Godot node and the glTF node index for the animation track.
 		const NodePath track_path = animation->track_get_path(track_index);
-		const Node *anim_player_parent = p_animation_player->get_parent();
+		const NodePath root_node = p_animation_player->get_root_node();
+		const Node *anim_player_parent = p_animation_player->get_node_or_null(root_node);
+		ERR_CONTINUE_MSG(!anim_player_parent, "glTF: Cannot get root node for animation player: " + String(root_node));
 		const Node *animated_node = anim_player_parent->get_node_or_null(track_path);
 		ERR_CONTINUE_MSG(!animated_node, "glTF: Cannot get node for animated track using path: " + String(track_path));
 		const GLTFAnimation::Interpolation gltf_interpolation = GLTFAnimation::godot_to_gltf_interpolation(animation, track_index);
@@ -6540,9 +6549,13 @@ Error GLTFDocument::_parse(Ref<GLTFState> p_state, const String &p_path, Ref<Fil
 	document_extensions.clear();
 	for (Ref<GLTFDocumentExtension> ext : all_document_extensions) {
 		ERR_CONTINUE(ext.is_null());
-		err = ext->import_preflight(p_state, p_state->json["extensionsUsed"]);
+		Ref<GLTFDocumentExtension> ext_dup = ext;
+		if (ClassDB::is_class_exposed(ext->get_class_name())) {
+			ext_dup = ext->duplicate();
+		}
+		err = ext_dup->import_preflight(p_state, p_state->json["extensionsUsed"]);
 		if (err == OK) {
-			document_extensions.push_back(ext);
+			document_extensions.push_back(ext_dup);
 		}
 	}
 
@@ -7106,9 +7119,13 @@ Error GLTFDocument::append_from_scene(Node *p_node, Ref<GLTFState> p_state, uint
 	document_extensions.clear();
 	for (Ref<GLTFDocumentExtension> ext : all_document_extensions) {
 		ERR_CONTINUE(ext.is_null());
-		Error err = ext->export_preflight(state, p_node);
+		Ref<GLTFDocumentExtension> ext_dup = ext;
+		if (ClassDB::is_class_exposed(ext->get_class_name())) {
+			ext_dup = ext->duplicate();
+		}
+		Error err = ext_dup->export_preflight(state, p_node);
 		if (err == OK) {
-			document_extensions.push_back(ext);
+			document_extensions.push_back(ext_dup);
 		}
 	}
 	// Add the root node(s) and their descendants to the state.

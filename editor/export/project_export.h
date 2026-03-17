@@ -30,11 +30,13 @@
 
 #pragma once
 
+#include "core/templates/rb_set.h"
 #include "editor/export/editor_export_preset.h"
 #include "scene/gui/dialogs.h"
 
 class CheckBox;
 class CheckButton;
+class HSplitContainer;
 class EditorFileDialog;
 class EditorFileSystemDirectory;
 class EditorInspector;
@@ -72,6 +74,7 @@ public:
 class ProjectExportDialog : public ConfirmationDialog {
 	GDCLASS(ProjectExportDialog, ConfirmationDialog);
 
+	HSplitContainer *main_split = nullptr;
 	TabContainer *sections = nullptr;
 
 	MenuButton *add_preset = nullptr;
@@ -192,6 +195,7 @@ class ProjectExportDialog : public ConfirmationDialog {
 	LineEdit *seed_input = nullptr;
 
 	OptionButton *script_mode = nullptr;
+	Label *enc_info_label = nullptr;
 
 	void _open_export_template_manager();
 
