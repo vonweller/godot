@@ -37,6 +37,7 @@
 #include "gdscript_tokenizer_buffer.h"
 
 #include "core/io/file_access.h"
+#include "core/io/resource_loader.h"
 #include "core/templates/vector.h"
 
 GDScriptParserRef::Status GDScriptParserRef::get_status() const {
