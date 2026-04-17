@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  audio_effect.cpp                                                      */
+/*  object.compat.inc                                                     */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,34 +28,25 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#include "audio_effect.h"
+#ifndef DISABLE_DEPRECATED
 
-#include "core/object/class_db.h" // IWYU pragma: keep. `GDVIRTUAL_BIND` macro.
+#include "object.h"
 
-void AudioEffectInstance::process(const AudioFrame *p_src_frames, AudioFrame *p_dst_frames, int p_frame_count) {
-	GDVIRTUAL_CALL(_process, p_src_frames, p_dst_frames, p_frame_count);
-}
-bool AudioEffectInstance::process_silence() const {
-	bool ret = false;
-	GDVIRTUAL_CALL(_process_silence, ret);
-	return ret;
-}
+#include "core/object/class_db.h"
 
-void AudioEffectInstance::_bind_methods() {
-	GDVIRTUAL_BIND(_process, "src_buffer", "r_dst_buffer", "frame_count");
-	GDVIRTUAL_BIND(_process_silence);
+bool Object::_is_class_bind_compat_118582(const String &p_name) const {
+	for (const StringName &name : get_gdtype().get_name_hierarchy()) {
+		if (name == p_name) {
+			return true;
+		}
+	}
+	return false;
 }
 
-////
-
-Ref<AudioEffectInstance> AudioEffect::instantiate() {
-	Ref<AudioEffectInstance> ret;
-	GDVIRTUAL_CALL(_instantiate, ret);
-	return ret;
-}
-void AudioEffect::_bind_methods() {
-	GDVIRTUAL_BIND(_instantiate);
+void Object::_bind_compatibility_methods() {
+	ClassDB::bind_compatibility_method(D_METHOD("is_class", "class"), &Object::_is_class_bind_compat_118582);
 }
 
-AudioEffect::AudioEffect() {
-}
+#else
+void Object::_bind_compatibility_methods() {}
+#endif // DISABLE_DEPRECATED
