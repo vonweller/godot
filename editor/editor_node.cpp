@@ -177,6 +177,7 @@
 #include "servers/display/display_server.h"
 #include "servers/navigation_2d/navigation_server_2d.h"
 #include "servers/navigation_3d/navigation_server_3d.h"
+#include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
 
 #ifdef VULKAN_ENABLED
@@ -1267,11 +1268,14 @@ void EditorNode::_remove_plugin_from_enabled(const String &p_name) {
 	ps->set("editor_plugins/enabled", enabled_plugins);
 }
 
-void EditorNode::_plugin_over_edit(EditorPlugin *p_plugin, Object *p_object) {
+void EditorNode::_plugin_over_edit(EditorPlugin *p_plugin, Object *p_object, bool p_set_current) {
 	if (p_object) {
 		editor_plugins_over->add_plugin(p_plugin);
 		p_plugin->edit(p_object);
 		p_plugin->make_visible(true);
+		if (p_set_current) {
+			p_plugin->set_current();
+		}
 	} else {
 		editor_plugins_over->remove_plugin(p_plugin);
 		p_plugin->edit(nullptr);
@@ -1744,9 +1748,9 @@ void EditorNode::save_resource_in_path(const Ref<Resource> &p_resource, const St
 
 	if (err != OK) {
 		if (ResourceLoader::is_imported(p_resource->get_path())) {
-			show_accept(TTR("Imported resources can't be saved."), TTR("OK"));
+			show_accept(vformat(TTR("Cannot save resource at path \"%s\", as it is imported.\nImported resources can't be saved. Instead, modify the source file or change options in the Import dock."), path), TTR("OK"));
 		} else {
-			show_accept(TTR("Error saving resource!"), TTR("OK"));
+			show_accept(vformat(TTR("Error saving resource at path \"%s\": %s."), path, error_names[err]), TTR("OK"));
 		}
 
 		saving_resources_in_path.erase(p_resource);
@@ -1891,7 +1895,7 @@ bool EditorNode::is_resource_internal_to_scene(Ref<Resource> p_resource) {
 	return inside_scene || p_resource->get_path().is_empty();
 }
 
-void EditorNode::gather_resources(const Variant &p_variant, List<Ref<Resource>> &r_list, bool p_subresources, bool p_allow_external) {
+void EditorNode::gather_resources(const Variant &p_variant, List<Ref<Resource>> &r_list, HashSet<Object *> &r_scanned_objects, bool p_subresources, bool p_allow_external) {
 	Variant::Type type = p_variant.get_type();
 	if (type == Variant::OBJECT && p_variant.get_validated_object() == nullptr) {
 		return;
@@ -1913,7 +1917,7 @@ void EditorNode::gather_resources(const Variant &p_variant, List<Ref<Resource>> 
 				}
 			}
 			if (Object::cast_to<Node>(v) == nullptr) {
-				gather_resources(v, r_list, p_subresources, p_allow_external);
+				gather_resources(v, r_list, r_scanned_objects, p_subresources, p_allow_external);
 			}
 		}
 		return;
@@ -1939,27 +1943,35 @@ void EditorNode::gather_resources(const Variant &p_variant, List<Ref<Resource>> 
 				}
 			}
 			if (Object::cast_to<Node>(kv.key) == nullptr) {
-				gather_resources(kv.key, r_list, p_subresources, p_allow_external);
+				gather_resources(kv.key, r_list, r_scanned_objects, p_subresources, p_allow_external);
 			}
 			if (Object::cast_to<Node>(kv.value) == nullptr) {
-				gather_resources(kv.value, r_list, p_subresources, p_allow_external);
+				gather_resources(kv.value, r_list, r_scanned_objects, p_subresources, p_allow_external);
 			}
 		}
 		return;
 	}
 
+	// Variant::Object
+
+	Object *object = p_variant;
+	if (r_scanned_objects.has(object)) {
+		return;
+	}
+	r_scanned_objects.insert(object);
+
 	List<PropertyInfo> pinfo;
-	p_variant.get_property_list(&pinfo);
+	object->get_property_list(&pinfo);
 
 	for (const PropertyInfo &E : pinfo) {
 		if (!(E.usage & PROPERTY_USAGE_EDITOR)) {
 			continue;
 		}
 
-		Variant property_value = p_variant.get(E.name);
+		Variant property_value = object->get(E.name);
 		Variant::Type property_type = property_value.get_type();
 		if (property_type == Variant::ARRAY || property_type == Variant::DICTIONARY) {
-			gather_resources(property_value, r_list, p_subresources, p_allow_external);
+			gather_resources(property_value, r_list, r_scanned_objects, p_subresources, p_allow_external);
 			continue;
 		}
 		Ref<Resource> res = property_value;
@@ -1975,7 +1987,7 @@ void EditorNode::gather_resources(const Variant &p_variant, List<Ref<Resource>> 
 		}
 		r_list.push_back(res);
 		if (p_subresources) {
-			gather_resources(res, r_list, p_subresources, p_allow_external);
+			gather_resources(res, r_list, r_scanned_objects, p_subresources, p_allow_external);
 		}
 	}
 }
@@ -1986,7 +1998,8 @@ void EditorNode::update_resource_count(Node *p_node, bool p_remove) {
 	}
 
 	List<Ref<Resource>> res_list;
-	gather_resources(p_node, res_list, true);
+	HashSet<Object *> scanned_objects;
+	gather_resources(p_node, res_list, scanned_objects, true);
 
 	for (Ref<Resource> &R : res_list) {
 		List<Node *>::Element *E = resource_count[R].find(p_node);
@@ -2015,7 +2028,8 @@ List<Node *> EditorNode::get_resource_node_list(Ref<Resource> p_res) {
 void EditorNode::update_node_reference(const Variant &p_value, Node *p_node, bool p_remove) {
 	List<Ref<Resource>> list;
 	Ref<Resource> res = p_value;
-	gather_resources(p_value, list, true); //Gather all Resources and their SubResources to remove p_node from their lists.
+	HashSet<Object *> scanned_objects;
+	gather_resources(p_value, list, scanned_objects, true); //Gather all Resources and their SubResources to remove p_node from their lists.
 
 	if (res.is_valid() && is_resource_internal_to_scene(res)) {
 		// Avoid external Resources from being added in.
@@ -2906,7 +2920,7 @@ bool EditorNode::_is_class_editor_disabled_by_feature_profile(const StringName &
 	return false;
 }
 
-void EditorNode::edit_item(Object *p_object, Object *p_editing_owner) {
+void EditorNode::edit_item(Object *p_object, Object *p_editing_owner, bool p_set_current) {
 	ERR_FAIL_NULL(p_editing_owner);
 
 	// Editing for this type of object may be disabled by user's feature profile.
@@ -2954,6 +2968,9 @@ void EditorNode::edit_item(Object *p_object, Object *p_editing_owner) {
 			// Plugin was already active, just change the object and ensure it's visible.
 			plugin->make_visible(true);
 			plugin->edit(p_object);
+			if (p_set_current) {
+				plugin->set_current();
+			}
 			continue;
 		}
 
@@ -2961,6 +2978,9 @@ void EditorNode::edit_item(Object *p_object, Object *p_editing_owner) {
 			// Plugin is already active, but as self-owning, so it needs a separate check.
 			plugin->make_visible(true);
 			plugin->edit(p_object);
+			if (p_set_current) {
+				plugin->set_current();
+			}
 			continue;
 		}
 
@@ -3000,7 +3020,7 @@ void EditorNode::edit_item(Object *p_object, Object *p_editing_owner) {
 	}
 
 	for (EditorPlugin *plugin : to_over_edit) {
-		_plugin_over_edit(plugin, p_object);
+		_plugin_over_edit(plugin, p_object, p_set_current);
 	}
 }
 
@@ -4011,6 +4031,12 @@ void EditorNode::_save_screenshot_with_embedded_process(int64_t p_w, int64_t p_h
 	Ref<Image> img = texture->get_image();
 	ERR_FAIL_COND_MSG(img.is_null(), "Cannot get an image from a viewport texture of the editor main screen.");
 	img->convert(Image::FORMAT_RGBA8);
+#ifdef RD_ENABLED
+	RenderingDevice *rendering_device = RD::get_singleton();
+	if (rendering_device && RenderingServer::get_singleton()->viewport_is_using_hdr_2d(viewport->get_viewport_rid())) {
+		img->linear_to_srgb();
+	}
+#endif
 	ERR_FAIL_COND(p_emb_path.is_empty());
 	Ref<Image> overlay = Image::load_from_file(p_emb_path);
 	DirAccess::remove_absolute(p_emb_path);
@@ -4035,6 +4061,13 @@ void EditorNode::_save_screenshot(const String &p_path) {
 	ERR_FAIL_COND_MSG(texture.is_null(), "Cannot get a viewport texture from the editor main screen.");
 	Ref<Image> img = texture->get_image();
 	ERR_FAIL_COND_MSG(img.is_null(), "Cannot get an image from a viewport texture of the editor main screen.");
+	img->convert(Image::FORMAT_RGBA8);
+#ifdef RD_ENABLED
+	RenderingDevice *rendering_device = RD::get_singleton();
+	if (rendering_device && RenderingServer::get_singleton()->viewport_is_using_hdr_2d(viewport->get_viewport_rid())) {
+		img->linear_to_srgb();
+	}
+#endif
 	Error error = img->save_png(p_path);
 	ERR_FAIL_COND_MSG(error != OK, "Cannot save screenshot to file '" + p_path + "'.");
 
@@ -6754,6 +6787,11 @@ void EditorNode::_restart_editor(bool p_goto_project_manager) {
 		if (!exec_dir.is_empty()) {
 			args.push_back("--path");
 			args.push_back(exec_dir);
+		}
+
+		List<String>::Element *vbf = args.find("--verbose");
+		if (vbf) {
+			args.erase(vbf);
 		}
 	} else {
 		args.push_back("--path");
