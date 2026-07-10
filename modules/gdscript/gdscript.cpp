@@ -41,6 +41,7 @@
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/templates/rb_set.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/gdscript_docgen.h"
@@ -273,7 +274,7 @@ StringName GDScript::get_instance_base_type() const {
 	if (native.is_valid()) {
 		return native->get_name();
 	}
-	if (base.is_valid() && base->is_valid()) {
+	if (base.is_valid() && base->is_script_valid()) {
 		return base->get_instance_base_type();
 	}
 	return StringName();
@@ -412,7 +413,7 @@ ScriptInstance *GDScript::instance_create(Object *p_this) {
 	}
 
 	if (top->native.is_valid()) {
-		if (!ClassDB::is_parent_class(p_this->get_class_name(), top->native->get_name())) {
+		if (!p_this->is_class(top->native->get_name())) {
 			if (EngineDebugger::is_active()) {
 				GDScriptLanguage::get_singleton()->debug_break_parse(_get_debug_path(), 1, "Script inherits from native type '" + String(top->native->get_name()) + "', so it can't be assigned to an object of type: '" + p_this->get_class() + "'");
 			}
@@ -582,7 +583,7 @@ bool GDScript::_update_exports(bool *r_err, bool p_recursive_call, PlaceHolderSc
 
 	placeholder_fallback_enabled = false;
 
-	if (base_cache.is_valid() && base_cache->is_valid()) {
+	if (base_cache.is_valid() && base_cache->is_script_valid()) {
 		for (int i = 0; i < base_caches.size(); i++) {
 			if (base_caches[i] == base_cache.ptr()) {
 				if (r_err) {
@@ -803,7 +804,7 @@ Error GDScript::reload(bool p_keep_state) {
 	bool can_run = ScriptServer::is_scripting_enabled() || is_tool();
 
 #ifdef TOOLS_ENABLED
-	if (p_keep_state && can_run && is_valid()) {
+	if (p_keep_state && can_run && is_script_valid()) {
 		_save_old_static_data();
 	}
 #endif
@@ -1558,7 +1559,7 @@ bool GDScriptInstance::set(const StringName &p_name, const Variant &p_value) {
 				callp(member->setter, &args, 1, err);
 				return err.error == Callable::CallError::CALL_OK;
 			} else {
-				members.write[member->index] = value;
+				members[member->index] = value;
 				return true;
 			}
 		}
@@ -1768,7 +1769,7 @@ void GDScriptInstance::get_property_list(List<PropertyInfo> *p_properties) const
 							String elem_type;
 							if (arr.is_typed()) {
 								const Ref<Script> script_type = arr.get_typed_script();
-								if (script_type.is_valid() && script_type->is_valid()) {
+								if (script_type.is_valid() && script_type->is_script_valid()) {
 									elem_type = GDScript::debug_get_script_name(script_type);
 								} else if (!arr.get_typed_class_name().is_empty()) {
 									elem_type = arr.get_typed_class_name();
@@ -2043,23 +2044,19 @@ const Variant GDScriptInstance::get_rpc_config() const {
 void GDScriptInstance::reload_members() {
 #ifdef DEBUG_ENABLED
 
-	Vector<Variant> new_members;
+	TightLocalVector<Variant> new_members;
 	new_members.resize(script->member_indices.size());
 
-	//pass the values to the new indices
+	// Transfer the old members into their new position.
 	for (KeyValue<StringName, GDScript::MemberInfo> &E : script->member_indices) {
 		if (member_indices_cache.has(E.key)) {
 			Variant value = members[member_indices_cache[E.key]];
-			new_members.write[E.value.index] = value;
+			new_members[E.value.index] = value;
 		}
 	}
+	members = std::move(new_members);
 
-	members.resize(new_members.size()); //resize
-
-	//apply
-	members = new_members;
-
-	//pass the values to the new indices
+	// Cache the new indices.
 	member_indices_cache.clear();
 	for (const KeyValue<StringName, GDScript::MemberInfo> &E : script->member_indices) {
 		member_indices_cache[E.key] = E.value.index;
