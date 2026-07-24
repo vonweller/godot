@@ -5252,8 +5252,12 @@ void Tree::_notification(int p_what) {
 		case NOTIFICATION_DRAG_BEGIN: {
 			single_select_defer = nullptr;
 			if (theme_cache.scroll_speed > 0) {
-				scrolling = true;
-				set_process_internal(true);
+				const Dictionary drag_data = get_viewport()->gui_get_drag_data();
+				// Enable scrolling, unless dragging a tab.
+				if (drag_data.get("type", "").operator String() != "tab") {
+					scrolling = true;
+					set_process_internal(true);
+				}
 			}
 		} break;
 
@@ -7724,9 +7728,7 @@ Tree::Tree() {
 }
 
 Tree::~Tree() {
-	if (root) {
-		memdelete(root);
-	}
+	memdelete(root);
 	RenderingServer::get_singleton()->free_rid(drop_indicator_ci);
 	RenderingServer::get_singleton()->free_rid(content_ci);
 	RenderingServer::get_singleton()->free_rid(custom_ci);

@@ -131,13 +131,8 @@ void GDScriptParserRef::clear() {
 
 	clearing = false;
 
-	if (lanalyzer != nullptr) {
-		memdelete(lanalyzer);
-	}
-
-	if (lparser != nullptr) {
-		memdelete(lparser);
-	}
+	memdelete(lanalyzer);
+	memdelete(lparser);
 }
 
 GDScriptParserRef::~GDScriptParserRef() {
