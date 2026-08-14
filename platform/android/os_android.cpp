@@ -61,6 +61,7 @@
 #endif
 
 #include <dlfcn.h>
+#include <stdlib.h>
 #include <sys/system_properties.h>
 
 const char *OS_Android::ANDROID_EXEC_PATH = "apk";
@@ -806,15 +807,9 @@ Error OS_Android::move_to_trash(const String &p_path) {
 
 	// Check if it's a directory
 	if (da_ref->dir_exists(p_path)) {
-		Error err = da_ref->change_dir(p_path);
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(da_ref->change_dir(p_path));
 		// This is directory, let's erase its contents
-		err = da_ref->erase_contents_recursive();
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(da_ref->erase_contents_recursive());
 		// Remove the top directory
 		return da_ref->remove(p_path);
 	} else if (da_ref->file_exists(p_path)) {
@@ -989,6 +984,11 @@ Error OS_Android::kill(const ProcessID &p_pid) {
 
 String OS_Android::get_system_ca_certificates() {
 	return godot_java->get_ca_certificates();
+}
+
+Error OS_Android::get_entropy(uint8_t *r_buffer, int p_bytes) {
+	arc4random_buf(r_buffer, p_bytes);
+	return OK;
 }
 
 Error OS_Android::setup_remote_filesystem(const String &p_server_host, int p_port, const String &p_password, String &r_project_path) {

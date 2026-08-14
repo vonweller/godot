@@ -538,10 +538,7 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 				for (GDScriptParser::ClassNode *look_class : script_classes) {
 					if (look_class->identifier && look_class->identifier->name == name) {
 						if (!look_class->self_type.is_set()) {
-							Error err = resolve_class_inheritance(look_class, id);
-							if (err) {
-								return err;
-							}
+							RETURN_IF_ERROR(resolve_class_inheritance(look_class, id));
 						}
 						base = look_class->self_type;
 						found = true;
@@ -652,11 +649,9 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 }
 
 Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_class, bool p_recursive) {
-	Error err = resolve_class_inheritance(p_class);
-	if (err) {
-		return err;
-	}
+	RETURN_IF_ERROR(resolve_class_inheritance(p_class));
 
+	Error err = OK;
 	if (p_recursive) {
 		for (int i = 0; i < p_class->members.size(); i++) {
 			if (p_class->members[i].type == GDScriptParser::ClassNode::Member::CLASS) {
@@ -912,7 +907,7 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 							}
 							[[fallthrough]];
 						default:
-							push_error(vformat(R"("%s" is a %s but does not contain a type.)", first, member.get_type_name()), p_type);
+							push_error(vformat(R"("%s" is a %s, so it can't be used as a type.)", first, member.get_type_name()), p_type);
 							return bad_type;
 					}
 				}
@@ -934,7 +929,7 @@ GDScriptParser::DataType GDScriptAnalyzer::resolve_datatype(GDScriptParser::Type
 				if (!result.is_set()) {
 					push_error(vformat(R"(Could not find type "%s" under base "%s".)", p_type->type_chain[i]->name, base.to_string()), p_type->type_chain[1]);
 					return bad_type;
-				} else if (!result.is_meta_type) {
+				} else if (!result.is_meta_type || !result.is_constant) {
 					push_error(vformat(R"(Member "%s" under base "%s" is not a valid type.)", p_type->type_chain[i]->name, base.to_string()), p_type->type_chain[1]);
 					return bad_type;
 				}
@@ -1825,9 +1820,6 @@ void GDScriptAnalyzer::resolve_function_signature(GDScriptParser::FunctionNode *
 			inferred_type.kind = GDScriptParser::DataType::BUILTIN;
 			inferred_type.builtin_type = Variant::ARRAY;
 			p_function->rest_parameter->type_constraint = inferred_type;
-#ifdef DEBUG_ENABLED
-			parser->push_warning(p_function->rest_parameter, GDScriptWarning::UNTYPED_DECLARATION, "Parameter", p_function->rest_parameter->identifier->name);
-#endif
 		}
 #ifdef DEBUG_ENABLED
 		is_shadowing(p_function->rest_parameter->identifier, "function parameter", true);
@@ -5089,32 +5081,34 @@ void GDScriptAnalyzer::reduce_subscript(GDScriptParser::SubscriptNode *p_subscri
 							case Variant::DICTIONARY:
 								if (base_type.has_container_element_type(0)) {
 									GDScriptParser::DataType key_type = base_type.get_container_element_type(0);
-									switch (index_type.builtin_type) {
-										// Null value will be treated as an empty object, allow.
-										case Variant::NIL:
-											error = key_type.builtin_type != Variant::OBJECT;
-											break;
-										// Objects are parsed for validity in a similar manner to container types.
-										case Variant::OBJECT:
-											if (key_type.builtin_type == Variant::OBJECT) {
-												error = !key_type.can_reference(index_type);
-											} else {
-												error = key_type.builtin_type != Variant::NIL;
-											}
-											break;
-										// String and StringName interchangeable in this context.
-										case Variant::STRING:
-										case Variant::STRING_NAME:
-											error = key_type.builtin_type != Variant::STRING_NAME && key_type.builtin_type != Variant::STRING;
-											break;
-										// Ints are valid indices for floats, but not the other way around.
-										case Variant::INT:
-											error = key_type.builtin_type != Variant::INT && key_type.builtin_type != Variant::FLOAT;
-											break;
-										// All other cases require the types to match exactly.
-										default:
-											error = key_type.builtin_type != index_type.builtin_type;
-											break;
+									if (!key_type.is_variant() && key_type.is_hard_type()) {
+										switch (index_type.builtin_type) {
+											// Null value will be treated as an empty object, allow.
+											case Variant::NIL:
+												error = key_type.builtin_type != Variant::OBJECT;
+												break;
+											// Objects are parsed for validity in a similar manner to container types.
+											case Variant::OBJECT:
+												if (key_type.builtin_type == Variant::OBJECT) {
+													error = !key_type.can_reference(index_type);
+												} else {
+													error = key_type.builtin_type != Variant::NIL;
+												}
+												break;
+											// String and StringName interchangeable in this context.
+											case Variant::STRING:
+											case Variant::STRING_NAME:
+												error = key_type.builtin_type != Variant::STRING_NAME && key_type.builtin_type != Variant::STRING;
+												break;
+											// Ints are valid indices for floats, but not the other way around.
+											case Variant::INT:
+												error = key_type.builtin_type != Variant::INT && key_type.builtin_type != Variant::FLOAT;
+												break;
+											// All other cases require the types to match exactly.
+											default:
+												error = key_type.builtin_type != index_type.builtin_type;
+												break;
+										}
 									}
 								}
 								break;
@@ -6740,16 +6734,10 @@ Error GDScriptAnalyzer::resolve_dependencies() {
 Error GDScriptAnalyzer::analyze() {
 	parser->errors.clear();
 
-	Error err = resolve_inheritance();
-	if (err) {
-		return err;
-	}
+	RETURN_IF_ERROR(resolve_inheritance());
 
 	resolve_interface();
-	err = resolve_body();
-	if (err) {
-		return err;
-	}
+	RETURN_IF_ERROR(resolve_body());
 
 	return resolve_dependencies();
 }
