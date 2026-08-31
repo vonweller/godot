@@ -106,6 +106,7 @@
 #include "editor/import/resource_importer_imagefont.h"
 #include "editor/import/resource_importer_layered_texture.h"
 #include "editor/import/resource_importer_shader_file.h"
+#include "editor/import/resource_importer_streamed_texture.h"
 #include "editor/import/resource_importer_svg.h"
 #include "editor/import/resource_importer_texture.h"
 #include "editor/import/resource_importer_texture_atlas.h"
@@ -159,6 +160,7 @@
 #include "scene/3d/bone_attachment_3d.h"
 #include "scene/animation/animation_tree.h"
 #include "scene/gui/color_picker.h"
+#include "scene/gui/control.h"
 #include "scene/gui/dialogs.h"
 #include "scene/gui/file_dialog.h"
 #include "scene/gui/menu_bar.h"
@@ -595,6 +597,7 @@ void EditorNode::_update_from_settings() {
 	}
 
 	ResourceImporterTexture::get_singleton()->update_imports();
+	ResourceImporterStreamedTexture::get_singleton()->update_imports();
 
 	_update_translations();
 
@@ -945,6 +948,7 @@ void EditorNode::_notification(int p_what) {
 			editor_selection->update();
 
 			ResourceImporterTexture::get_singleton()->update_imports();
+			ResourceImporterStreamedTexture::get_singleton()->update_imports();
 
 			if (requested_first_scan) {
 				requested_first_scan = false;
@@ -3183,18 +3187,15 @@ void EditorNode::_edit_current(bool p_skip_foreign, bool p_skip_inspector_update
 		InspectorDock::get_inspector_singleton()->set_use_folding(!disable_folding, false);
 	}
 
-	bool is_resource = current_obj->is_class("Resource");
-	bool is_node = current_obj->is_class("Node");
-	bool stay_in_script_editor_on_node_selected = bool(EDITOR_GET("text_editor/behavior/navigation/stay_in_script_editor_on_node_selected"));
+	bool is_resource = Object::cast_to<Resource>(current_obj);
+	bool is_node = Object::cast_to<Node>(current_obj);
 	bool skip_main_plugin = false;
 
 	String editable_info; // None by default.
 	bool info_is_warning = false;
 
-	if (current_obj->has_method("_is_read_only")) {
-		if (current_obj->call("_is_read_only")) {
-			editable_info = TTR("This object is marked as read-only, so it's not editable.");
-		}
+	if (current_obj->call(SNAME("_is_read_only")).operator bool()) {
+		editable_info = TTR("This object is marked as read-only, so it's not editable.");
 	}
 
 	if (is_resource) {
@@ -3241,11 +3242,7 @@ void EditorNode::_edit_current(bool p_skip_foreign, bool p_skip_inspector_update
 			SceneTreeDock::get_singleton()->set_selection({ current_node });
 			InspectorDock::get_singleton()->update(current_node);
 			if (!inspector_only && !skip_main_plugin) {
-				if ((ScriptEditor::get_singleton()->get_current_layout() != EditorDock::DOCK_LAYOUT_FLOATING) && ScriptEditor::get_singleton()->is_visible_in_tree()) {
-					skip_main_plugin = stay_in_script_editor_on_node_selected;
-				} else {
-					skip_main_plugin = !editor_main_screen->can_auto_switch_screens();
-				}
+				skip_main_plugin = !editor_main_screen->can_auto_switch_screens();
 			}
 		} else {
 			SignalsDock::get_singleton()->set_object(nullptr);
@@ -4446,9 +4443,11 @@ void EditorNode::replace_resources_in_scenes(const Vector<Ref<Resource>> &p_sour
 }
 
 void EditorNode::add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed) {
+#ifndef DISABLE_DEPRECATED
 	if (p_editor->has_main_screen()) {
 		singleton->editor_main_screen->add_main_plugin(p_editor);
 	}
+#endif
 	singleton->editor_data.add_editor_plugin(p_editor);
 	singleton->add_child(p_editor);
 	if (p_config_changed) {
@@ -4457,9 +4456,11 @@ void EditorNode::add_editor_plugin(EditorPlugin *p_editor, bool p_config_changed
 }
 
 void EditorNode::remove_editor_plugin(EditorPlugin *p_editor, bool p_config_changed) {
+#ifndef DISABLE_DEPRECATED
 	if (p_editor->has_main_screen()) {
 		singleton->editor_main_screen->remove_main_plugin(p_editor);
 	}
+#endif
 	p_editor->make_visible(false);
 	p_editor->clear();
 	if (p_config_changed) {
@@ -7194,9 +7195,7 @@ void EditorNode::_notify_nodes_scene_reimported(Node *p_node, Array p_reimported
 		}
 	}
 
-	if (p_node->has_method("_nodes_scene_reimported")) {
-		p_node->call("_nodes_scene_reimported", p_reimported_nodes);
-	}
+	p_node->call(SNAME("_nodes_scene_reimported"), p_reimported_nodes);
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		_notify_nodes_scene_reimported(p_node->get_child(i), p_reimported_nodes);
@@ -8430,6 +8429,7 @@ HashMap<String, Variant> EditorNode::get_initial_settings() {
 	HashMap<String, Variant> settings;
 	settings["display/window/stretch/aspect"] = "expand";
 	settings["display/window/stretch/mode"] = "canvas_items";
+	settings["gui/common/auto_focus_strategy"] = Control::AutoFocusStrategy::STRATEGY_BALLOON;
 	settings["input_devices/joypads/ignore_joypad_on_unfocused_application"] = true;
 	settings["physics/3d/physics_engine"] = "Jolt Physics";
 	settings["rendering/rendering_device/driver.windows"] = "d3d12";
@@ -8595,8 +8595,13 @@ EditorNode::EditorNode() {
 
 	{
 		// Register importers at the beginning, so dialogs are created with the right extensions.
-		Ref<ResourceImporterTexture> import_texture = memnew(ResourceImporterTexture(true));
+		Ref<ResourceImporterTexture> import_texture;
+		import_texture.instantiate(true);
 		ResourceFormatImporter::get_singleton()->add_importer(import_texture);
+
+		Ref<ResourceImporterStreamedTexture> import_streamed_texture;
+		import_streamed_texture.instantiate(true);
+		ResourceFormatImporter::get_singleton()->add_importer(import_streamed_texture);
 
 		Ref<ResourceImporterLayeredTexture> import_cubemap;
 		import_cubemap.instantiate();
@@ -9217,12 +9222,7 @@ EditorNode::EditorNode() {
 	right_menu_hb->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	title_bar->add_child(right_menu_hb);
 
-	// FIXME: There has to be a simpler way to determine correct index.
-#ifdef ANDROID_ENABLED
-	title_bar->move_child(editor_main_screen->get_internal_container(), title_bar->get_child_count() / 2);
-#else
-	title_bar->move_child(editor_main_screen->get_internal_container(), left_menu_spacer ? 3 : 2);
-#endif
+	title_bar->move_child(editor_main_screen->get_internal_container(), left_spacer->get_index());
 
 	renderer = memnew(OptionButton);
 	renderer->set_flat(true);
