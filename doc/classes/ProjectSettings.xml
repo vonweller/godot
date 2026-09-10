@@ -617,6 +617,9 @@
 		<member name="debug/gdscript/warnings/native_method_override" type="int" setter="" getter="" default="2">
 			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when a method in the script overrides a native method, because it may not behave as expected.
 		</member>
+		<member name="debug/gdscript/warnings/onready_with_cast" type="int" setter="" getter="" default="1">
+			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when an [code]@onready[/code] initializer uses a cast on a [code]$GetNodeLiteral[/code], because it may unexpectedly assign [code]null[/code].
+		</member>
 		<member name="debug/gdscript/warnings/onready_with_export" type="int" setter="" getter="" default="2">
 			When set to [b]Warn[/b] or [b]Error[/b], produces a warning or an error respectively when the [code]@onready[/code] annotation is used together with the [code]@export[/code] annotation, since it may not behave as expected.
 		</member>
@@ -1266,6 +1269,10 @@
 		<member name="gui/common/text_edit_undo_stack_max_size" type="int" setter="" getter="" default="1024">
 			Maximum undo/redo history size for [TextEdit] fields.
 		</member>
+		<member name="gui/fonts/compatibility/msdf_legacy_scaling" type="bool" setter="" getter="" default="false">
+			If set to [code]true[/code], multichannel signed distance field (MSDF) glyph shapes are scaled using the divisor used before Godot 4.8, which was incorrect and made MSDF text render about 6.67% larger than intended.
+			This setting is provided for compatibility with existing projects that relied on the incorrect scaling and would otherwise have their layout shifted by the fix. New projects should leave this disabled.
+		</member>
 		<member name="gui/fonts/dynamic_fonts/use_oversampling" type="bool" setter="" getter="" default="true">
 			If set to [code]true[/code] and [member display/window/stretch/mode] is set to [code]"canvas_items"[/code], font and [DPITexture] oversampling is enabled in the main window. Use [member Viewport.oversampling] to control oversampling in other viewports and windows.
 		</member>
@@ -1703,8 +1710,9 @@
 		<member name="input_devices/pointing/android/disable_scroll_deadzone" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], disables the scroll deadzone on Android, allowing even very small scroll movements to be registered. This may increase scroll sensitivity but can also lead to unintended scrolling from slight finger movements.
 		</member>
-		<member name="input_devices/pointing/android/enable_long_press_as_right_click" type="bool" setter="" getter="" default="false">
+		<member name="input_devices/pointing/android/enable_long_press_as_right_click" type="bool" setter="" getter="" default="false" deprecated="Use [member InputEventScreenTouch.long_press] instead.">
 			If [code]true[/code], long press events on an Android touchscreen are transformed into right click events.
+			[b]Note:[/b] Some control nodes might ignore this event, use [member InputEventScreenTouch.long_press] instead.
 		</member>
 		<member name="input_devices/pointing/android/enable_pan_and_scale_gestures" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], multi-touch pan and scale gestures are enabled on Android devices.
@@ -3644,6 +3652,15 @@
 		<member name="xr/openxr/extensions/render_model" type="bool" setter="" getter="" default="false">
 			If [code]true[/code] we enable the render model extension if available.
 			[b]Note:[/b] This relates to the core OpenXR render model extension and has no relation to any vendor render model extensions.
+		</member>
+		<member name="xr/openxr/extensions/spatial_container/bounds" type="Vector3" setter="" getter="" default="Vector3(0.5, 0.5, 0.5)">
+			Specifies the starting bounds for the main spatial container, in meters.
+		</member>
+		<member name="xr/openxr/extensions/spatial_container/bounds_mode" type="int" setter="" getter="" default="&quot;0&quot;">
+			Specifies the bounds mode, [code]bounded[/code] or [code]immersive[/code], for the main spatial container.
+		</member>
+		<member name="xr/openxr/extensions/spatial_container/enabled" type="bool" setter="" getter="" default="false">
+			Enables the spatial container extension.
 		</member>
 		<member name="xr/openxr/extensions/spatial_entity/enable_builtin_anchor_detection" type="bool" setter="" getter="" default="false">
 			If [code]true[/code], we enable the built-in logic for handling anchors. Godot will query (persistent) anchors and manage [OpenXRAnchorTracker] instances for you. If disabled you'll need to create your own spatial and persistence context and perform your own discovery queries.
