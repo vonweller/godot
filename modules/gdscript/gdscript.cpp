@@ -1459,7 +1459,14 @@ void GDScript::clear() {
 		MutexLock lock(func_ptrs_to_update_mutex);
 		for (UpdatableFuncPtr *updatable : func_ptrs_to_update) {
 			updatable->ptr = nullptr;
+			// 脚本即将清空/销毁：解除 back-pointer，否则晚于脚本析构的 lambda
+			// callable（WorkerThreadPool 任务、未消费的信号等）析构时会对已释放
+			// 的 script 锁 func_ptrs_to_update_mutex——--bagshot 退出堆损坏/AV 定案
+			// （2026-10-24）。detach 后 ~UpdatableFuncPtr 变成无害空操作。
+			updatable->list_element = nullptr;
+			updatable->script = nullptr;
 		}
+		func_ptrs_to_update.clear();
 	}
 
 	for (const KeyValue<StringName, GDScriptFunction *> &E : member_functions) {

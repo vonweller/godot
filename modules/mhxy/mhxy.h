@@ -28,4 +28,12 @@ public:
 	PackedInt32Array query_aoi(const PackedVector2Array &p_points, const Rect2 &p_view) const;
 	Dictionary cache_stats() const;
 	void clear_resource_cache();
+	// 模块卸载（register_types 的 uninitialize）时调用：文件级 static 缓存持有
+	// Ref<Image>/Ref<FileAccess>，若留到进程退出由 static 析构释放，会落在
+	// ObjectDB::cleanup 拆表之后（Object::~Object 触碰已 memfree 的 object_slots），
+	// headless 必现退出段错误。必须在场景级卸载、ObjectDB 还活着的时候清掉。
+	static void shutdown_cache();
+	// Windows 常驻 VEH 取证：堆损坏(0xC0000374)/访问违例时向 stderr 打符号化栈
+	// （fail-fast 绕过 SEH 过滤器与 Godot 崩溃处理器，见 mhxy.cpp 顶部注释）。
+	static void install_crash_diag();
 };
