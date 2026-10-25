@@ -534,6 +534,82 @@ static Ref<Image> cached_map_tile(const String &path, int tile_id) {
 	return image;
 }
 
+// 云风老格式(1054 等老地图,GGE 判 ((Uint16*)mem0)[1]==0xA0FF):SOI 后带 FFA0 野
+// 标记、SOS 头长度 0009 缺 Ss/Se/AhAl 三字节、熵编码流裸 FF 不做 FF00 填充——标准
+// 解码器全拒。按 GGE gxy2/map.c _fixjpeg 语义还原成标准 JPEG;不认识的布局返回
+// false,调用方回退原始字节(对齐旧引擎仅此一条容错路径)。
+static bool fix_yunfeng_jpeg(const PackedByteArray &blob, PackedByteArray &out) {
+	if (blob.size() < 12) {
+		return false;
+	}
+	const uint8_t *in = blob.ptr();
+	int size = blob.size();
+	if (in[0] != 0xFF || in[1] != 0xD8 || in[2] != 0xFF || in[3] != 0xA0) {
+		return false;
+	}
+	out.resize(size * 2 + 8);
+	uint8_t *o = out.ptrw();
+	int ip = 4;
+	int op = 0;
+	o[op++] = 0xFF;
+	o[op++] = 0xD8;
+	while (ip + 1 < size) {
+		if (in[ip] != 0xFF) {
+			return false;
+		}
+		uint8_t m = in[ip + 1];
+		if (m == 0xD9) {
+			break;
+		}
+		if (m == 0xC0 || m == 0xC1 || m == 0xC4 || m == 0xDB || m == 0xDD) {
+			if (ip + 4 > size) {
+				return false;
+			}
+			int len = (in[ip + 2] << 8) | in[ip + 3];
+			if (len < 2 || ip + 2 + len > size) {
+				return false;
+			}
+			memcpy(o + op, in + ip, 2 + len);
+			op += 2 + len;
+			ip += 2 + len;
+		} else if (m == 0xDA) {
+			if (ip + 4 > size) {
+				return false;
+			}
+			int len = (in[ip + 2] << 8) | in[ip + 3];
+			if (len < 2 || ip + 2 + len > size) {
+				return false;
+			}
+			// SOS 头重写为标准长度(len+3),段尾补 Ss/Se/AhAl=00 3F 00
+			o[op++] = 0xFF;
+			o[op++] = 0xDA;
+			o[op++] = (uint8_t)((len + 3) >> 8);
+			o[op++] = (uint8_t)(len + 3);
+			memcpy(o + op, in + ip + 4, len - 2);
+			op += len - 2;
+			o[op++] = 0x00;
+			o[op++] = 0x3F;
+			o[op++] = 0x00;
+			ip += 2 + len;
+			// 熵流逐字节搬(末尾 FFD9 除外),裸 FF 补 00
+			while (ip < size - 2) {
+				o[op++] = in[ip];
+				if (in[ip] == 0xFF) {
+					o[op++] = 0x00;
+				}
+				ip++;
+			}
+			o[op++] = 0xFF;
+			o[op++] = 0xD9;
+			out.resize(op);
+			return true;
+		} else {
+			return false;
+		}
+	}
+	return false;
+}
+
 Ref<Image> decode_map_tile(const String &path, int tile_id) {
 	uint32_t width, height, cols, rows;
 	if (!map_header(path, width, height, cols, rows)) {
@@ -572,6 +648,10 @@ Ref<Image> decode_map_tile(const String &path, int tile_id) {
 		PackedByteArray blob = f->get_buffer(size);
 		if (blob.size() != (int)size) {
 			return Ref<Image>();
+		}
+		PackedByteArray fixed;
+		if (fix_yunfeng_jpeg(blob, fixed)) {
+			blob = fixed;
 		}
 		Ref<Image> image;
 		image.instantiate();
