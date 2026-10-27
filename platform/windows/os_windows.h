@@ -178,6 +178,11 @@ public:
 	virtual MainLoop *get_main_loop() const override;
 
 	virtual String get_name() const override;
+
+	// Godot 3 power API semantics (MHXY battery HUD), GetSystemPowerStatus-backed.
+	virtual PowerState get_power_state() const override;
+	virtual int get_power_percent_left() const override;
+	virtual int get_power_storage_left() const override;
 	virtual String get_distribution_name() const override;
 	virtual String get_version() const override;
 	virtual String get_version_alias() const override;

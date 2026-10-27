@@ -786,6 +786,19 @@ String OS_Android::get_temp_path() const {
 	return ".";
 }
 
+// Godot 3 power API semantics via BatteryManager sticky intent (MHXY battery HUD).
+OS::PowerState OS_Android::get_power_state() const {
+	int state = godot_io_java->get_power_state();
+	if (state < 0) {
+		return OS::POWERSTATE_UNKNOWN;
+	}
+	return (OS::PowerState)state;
+}
+
+int OS_Android::get_power_percent_left() const {
+	return godot_io_java->get_power_percent_left();
+}
+
 String OS_Android::get_unique_id() const {
 	String unique_id = godot_io_java->get_unique_id();
 	if (!unique_id.is_empty()) {

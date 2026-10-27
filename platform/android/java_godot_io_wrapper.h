@@ -55,6 +55,8 @@ private:
 	jmethodID _get_scaled_density = nullptr;
 	jmethodID _get_screen_refresh_rate = nullptr;
 	jmethodID _get_unique_id = nullptr;
+	jmethodID _get_power_state = nullptr;
+	jmethodID _get_power_percent_left = nullptr;
 	jmethodID _show_keyboard = nullptr;
 	jmethodID _hide_keyboard = nullptr;
 	jmethodID _has_hardware_keyboard = nullptr;
@@ -80,6 +82,8 @@ public:
 	TypedArray<Rect2> get_display_cutouts();
 	Rect2i get_display_safe_area();
 	String get_unique_id();
+	int get_power_state();
+	int get_power_percent_left();
 	bool has_vk();
 	bool has_hardware_keyboard();
 	void show_vk(const String &p_existing, int p_type, int p_max_input_length, int p_cursor_start, int p_cursor_end);

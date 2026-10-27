@@ -600,6 +600,50 @@ String OS_Windows::get_name() const {
 	return "Windows";
 }
 
+// Godot 3 power API semantics via GetSystemPowerStatus (MHXY battery HUD).
+OS::PowerState OS_Windows::get_power_state() const {
+	SYSTEM_POWER_STATUS status;
+	if (!GetSystemPowerStatus(&status)) {
+		return OS::POWERSTATE_UNKNOWN;
+	}
+	if (status.BatteryFlag == 255) {
+		return OS::POWERSTATE_UNKNOWN;
+	}
+	if (status.BatteryFlag & 128) {
+		return OS::POWERSTATE_NO_BATTERY;
+	}
+	switch (status.ACLineStatus) {
+		case 0:
+			return OS::POWERSTATE_ON_BATTERY;
+		case 1:
+			if (status.BatteryFlag & 8) {
+				return OS::POWERSTATE_CHARGING;
+			}
+			if (status.BatteryLifePercent == 100) {
+				return OS::POWERSTATE_CHARGED;
+			}
+			return OS::POWERSTATE_ON_AC_POWER;
+		default:
+			return OS::POWERSTATE_UNKNOWN;
+	}
+}
+
+int OS_Windows::get_power_percent_left() const {
+	SYSTEM_POWER_STATUS status;
+	if (!GetSystemPowerStatus(&status) || status.BatteryLifePercent == 255) {
+		return -1;
+	}
+	return status.BatteryLifePercent;
+}
+
+int OS_Windows::get_power_storage_left() const {
+	SYSTEM_POWER_STATUS status;
+	if (!GetSystemPowerStatus(&status) || status.BatteryLifeTime == 0xFFFFFFFF) {
+		return -1;
+	}
+	return (int)status.BatteryLifeTime;
+}
+
 String OS_Windows::get_distribution_name() const {
 	return get_name();
 }

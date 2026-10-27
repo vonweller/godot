@@ -64,6 +64,8 @@ GodotIOJavaWrapper::GodotIOJavaWrapper(JNIEnv *p_env, jobject p_godot_io_instanc
 		_get_scaled_density = p_env->GetMethodID(cls, "getScaledDensity", "()F");
 		_get_screen_refresh_rate = p_env->GetMethodID(cls, "getScreenRefreshRate", "(D)D");
 		_get_unique_id = p_env->GetMethodID(cls, "getUniqueID", "()Ljava/lang/String;");
+		_get_power_state = p_env->GetMethodID(cls, "getPowerState", "()I");
+		_get_power_percent_left = p_env->GetMethodID(cls, "getPowerPercentLeft", "()I");
 		_show_keyboard = p_env->GetMethodID(cls, "showKeyboard", "(Ljava/lang/String;IIII)V");
 		_hide_keyboard = p_env->GetMethodID(cls, "hideKeyboard", "()V");
 		_has_hardware_keyboard = p_env->GetMethodID(cls, "hasHardwareKeyboard", "()Z");
@@ -230,6 +232,24 @@ String GodotIOJavaWrapper::get_unique_id() {
 	} else {
 		return String();
 	}
+}
+
+int GodotIOJavaWrapper::get_power_state() {
+	if (_get_power_state) {
+		JNIEnv *env = get_jni_env();
+		ERR_FAIL_NULL_V(env, -1);
+		return (int)env->CallIntMethod(godot_io_instance, _get_power_state);
+	}
+	return -1;
+}
+
+int GodotIOJavaWrapper::get_power_percent_left() {
+	if (_get_power_percent_left) {
+		JNIEnv *env = get_jni_env();
+		ERR_FAIL_NULL_V(env, -1);
+		return (int)env->CallIntMethod(godot_io_instance, _get_power_percent_left);
+	}
+	return -1;
 }
 
 bool GodotIOJavaWrapper::has_vk() {

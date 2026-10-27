@@ -35,10 +35,13 @@ import org.godotengine.godot.input.GodotEditText;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.graphics.Rect;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
@@ -195,6 +198,53 @@ public class GodotIO {
 			selectedScaledDensity = 0.75f;
 		}
 		return selectedScaledDensity;
+	}
+
+	// Godot 3 OS::PowerState values (0=UNKNOWN 1=ON_AC_POWER 2=ON_BATTERY
+	// 3=NO_BATTERY 4=CHARGING 5=CHARGED); -1 = cannot determine.
+	public int getPowerState() {
+		Activity activity = godot.getActivity();
+		Context context = activity != null ? activity : godot.getContext();
+		if (context == null) {
+			return -1;
+		}
+		Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+		if (battery == null) {
+			return -1;
+		}
+		int status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+		int plugged = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+		if (plugged < 0) {
+			return -1;
+		}
+		if (plugged == 0) {
+			return 2; // ON_BATTERY
+		}
+		if (status == BatteryManager.BATTERY_STATUS_FULL) {
+			return 5; // CHARGED
+		}
+		if (status == BatteryManager.BATTERY_STATUS_CHARGING) {
+			return 4; // CHARGING
+		}
+		return 1; // ON_AC_POWER
+	}
+
+	public int getPowerPercentLeft() {
+		Activity activity = godot.getActivity();
+		Context context = activity != null ? activity : godot.getContext();
+		if (context == null) {
+			return -1;
+		}
+		Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+		if (battery == null) {
+			return -1;
+		}
+		int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+		int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+		if (level < 0 || scale <= 0) {
+			return -1;
+		}
+		return (level * 100) / scale;
 	}
 
 	public double getScreenRefreshRate(double fallback) {

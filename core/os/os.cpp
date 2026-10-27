@@ -93,6 +93,19 @@ String OS::get_identifier() const {
 	return get_name().to_lower();
 }
 
+// Godot 3 semantics: platforms override; default = cannot determine.
+OS::PowerState OS::get_power_state() const {
+	return POWERSTATE_UNKNOWN;
+}
+
+int OS::get_power_percent_left() const {
+	return -1;
+}
+
+int OS::get_power_storage_left() const {
+	return -1;
+}
+
 void OS::print_error(const char *p_function, const char *p_file, int p_line, const char *p_code, const char *p_rationale, bool p_editor_notify, Logger::ErrorType p_type, const Vector<Ref<ScriptBacktrace>> &p_script_backtraces) {
 	if (!_stderr_enabled) {
 		return;

@@ -242,6 +242,19 @@ public:
 	void set_environment(const String &p_var, const String &p_value) const;
 	void unset_environment(const String &p_var) const;
 
+	enum PowerState {
+		POWERSTATE_UNKNOWN,
+		POWERSTATE_ON_AC_POWER,
+		POWERSTATE_ON_BATTERY,
+		POWERSTATE_NO_BATTERY,
+		POWERSTATE_CHARGING,
+		POWERSTATE_CHARGED,
+	};
+
+	PowerState get_power_state() const;
+	int get_power_percent_left() const;
+	int get_power_storage_left() const;
+
 	String get_name() const;
 	String get_distribution_name() const;
 	String get_version() const;
@@ -723,6 +736,7 @@ VARIANT_BITFIELD_CAST(CoreBind::ResourceSaver::SaverFlags);
 VARIANT_ENUM_CAST(CoreBind::OS::RenderingDriver);
 #endif
 VARIANT_ENUM_CAST(CoreBind::OS::SystemDir);
+VARIANT_ENUM_CAST(CoreBind::OS::PowerState);
 VARIANT_ENUM_CAST(CoreBind::OS::StdHandleType);
 
 VARIANT_ENUM_CAST(CoreBind::Geometry2D::PolyBooleanOperation);

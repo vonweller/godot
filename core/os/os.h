@@ -74,6 +74,21 @@ public:
 		PLATFORM_STRING_FILE_MANAGER_SHOW,
 	};
 
+	// Power state, Godot 3 semantics (ported back for MHXY battery HUD; Windows
+	// via GetSystemPowerStatus, Android via BatteryManager).
+	enum PowerState {
+		POWERSTATE_UNKNOWN, //!< Cannot determine power status (e.g. no battery present)
+		POWERSTATE_ON_AC_POWER, //!< Plugged in, powered by an external power source
+		POWERSTATE_ON_BATTERY, //!< Not plugged in, running on the battery
+		POWERSTATE_NO_BATTERY, //!< Plugged in, no battery available
+		POWERSTATE_CHARGING, //!< Plugged in, battery is charging
+		POWERSTATE_CHARGED, //!< Plugged in, battery is fully charged
+	};
+
+	virtual PowerState get_power_state() const;
+	virtual int get_power_percent_left() const;
+	virtual int get_power_storage_left() const;
+
 private:
 	static OS *singleton;
 	static uint64_t target_ticks;

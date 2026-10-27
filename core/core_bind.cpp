@@ -500,6 +500,18 @@ void OS::unset_environment(const String &p_var) const {
 	::OS::get_singleton()->unset_environment(p_var);
 }
 
+OS::PowerState OS::get_power_state() const {
+	return (PowerState)::OS::get_singleton()->get_power_state();
+}
+
+int OS::get_power_percent_left() const {
+	return ::OS::get_singleton()->get_power_percent_left();
+}
+
+int OS::get_power_storage_left() const {
+	return ::OS::get_singleton()->get_power_storage_left();
+}
+
 String OS::get_name() const {
 	return ::OS::get_singleton()->get_name();
 }
@@ -811,6 +823,10 @@ void OS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_environment", "variable", "value"), &OS::set_environment);
 	ClassDB::bind_method(D_METHOD("unset_environment", "variable"), &OS::unset_environment);
 
+	ClassDB::bind_method(D_METHOD("get_power_state"), &OS::get_power_state);
+	ClassDB::bind_method(D_METHOD("get_power_percent_left"), &OS::get_power_percent_left);
+	ClassDB::bind_method(D_METHOD("get_power_storage_left"), &OS::get_power_storage_left);
+
 	ClassDB::bind_method(D_METHOD("get_name"), &OS::get_name);
 	ClassDB::bind_method(D_METHOD("get_distribution_name"), &OS::get_distribution_name);
 	ClassDB::bind_method(D_METHOD("get_version"), &OS::get_version);
@@ -885,6 +901,13 @@ void OS::_bind_methods() {
 	BIND_ENUM_CONSTANT(RENDERING_DRIVER_D3D12);
 	BIND_ENUM_CONSTANT(RENDERING_DRIVER_METAL);
 #endif // DISABLE_DEPRECATED
+
+	BIND_ENUM_CONSTANT(POWERSTATE_UNKNOWN);
+	BIND_ENUM_CONSTANT(POWERSTATE_ON_AC_POWER);
+	BIND_ENUM_CONSTANT(POWERSTATE_ON_BATTERY);
+	BIND_ENUM_CONSTANT(POWERSTATE_NO_BATTERY);
+	BIND_ENUM_CONSTANT(POWERSTATE_CHARGING);
+	BIND_ENUM_CONSTANT(POWERSTATE_CHARGED);
 
 	BIND_ENUM_CONSTANT(SYSTEM_DIR_DESKTOP);
 	BIND_ENUM_CONSTANT(SYSTEM_DIR_DCIM);
