@@ -32,7 +32,6 @@
 
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
-#include "core/io/zip_io.h"
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
 #include "editor/editor_node.h"
@@ -329,7 +328,7 @@ void AndroidSDKManager::_install_android_sdk_packages() {
 	}
 
 	_show_setup_dialog(INSTALLING_ANDROID_SDK, false, false);
-	execute_outputs->add_text(TTR("Installing Android SDK package: ") + package + "\n");
+	execute_outputs->add_text(vformat(TTR("Installing Android SDK package: %s"), package) + "\n");
 }
 
 void AndroidSDKManager::_android_sdk_installed(int p_exit_code) {
@@ -709,7 +708,7 @@ bool AndroidSDKManager::_is_android_sdk_setup(const String &p_android_sdk_path, 
 			Ref<DirAccess> da = DirAccess::open(p_android_sdk_path.path_join(package), &errn);
 			if (errn != OK) {
 				if (r_error) {
-					*r_error += TTR("Unable to find Android SDK package '") + package + "'.\n";
+					*r_error += vformat(TTR("Unable to find Android SDK package '%s'."), package) + "\n";
 				}
 				return false;
 			}
